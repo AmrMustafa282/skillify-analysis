@@ -1,0 +1,30 @@
+version: '3.8'
+
+services:
+  # MongoDB service
+  mongodb:
+    image: mongo:latest
+    container_name: assessment-mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=admin
+      - MONGO_INITDB_ROOT_PASSWORD=password
+      - MONGO_INITDB_DATABASE=assessment_db
+    restart: unless-stopped
+
+  # Code execution environment
+  code-execution:
+    build:
+      context: ./docker/code-execution
+      dockerfile: Dockerfile
+    container_name: assessment-code-execution
+    volumes:
+      - ./tmp:/home/coderunner/code
+    restart: "no"
+    command: tail -f /dev/null  # Keep container running
+
+volumes:
+  mongodb_data:

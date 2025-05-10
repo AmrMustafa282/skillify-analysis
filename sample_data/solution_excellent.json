@@ -1,0 +1,38 @@
+{
+  "solution_id": "333e4567-e89b-12d3-a456-426614174001",
+  "test_id": "111e4567-e89b-12d3-a456-426614174000",
+  "candidate_id": "444e4567-e89b-12d3-a456-426614174001",
+  "answers": [
+    {
+      "question_id": "1",
+      "answer_type": "MCQ",
+      "value": "q5_b",
+      "submitted_at": "2023-05-01T10:15:30"
+    },
+    {
+      "question_id": "6",
+      "answer_type": "OPEN_ENDED",
+      "value": "Object-Oriented Programming (OOP) is a programming paradigm based on the concept of 'objects', which can contain data and code. The data is in the form of fields (often known as attributes or properties), and the code is in the form of procedures (often known as methods). A key feature of OOP is encapsulation, which bundles the data and methods that operate on the data into a single unit. Other important features include inheritance (allowing objects to inherit properties and methods from parent classes), polymorphism (allowing objects to take on many forms depending on context), and abstraction (hiding complex implementation details behind simple interfaces).",
+      "submitted_at": "2023-05-01T10:25:45"
+    },
+    {
+      "question_id": "2",
+      "answer_type": "MCQ",
+      "values": ["q7_a", "q7_c", "q7_d"],
+      "submitted_at": "2023-05-01T10:10:15"
+    }
+  ],
+  "coding_answers": [
+    {
+      "question_id": "3",
+      "code": "def reverse_string(s):\n    \"\"\"\n    Reverses a string efficiently.\n    \n    Args:\n        s: Input string to reverse\n        \n    Returns:\n        Reversed string\n        \n    Time Complexity: O(n) where n is the length of the string\n    Space Complexity: O(n) for the new string\n    \"\"\"\n    # Python's string slicing with negative step is the most efficient way\n    # to reverse a string in Python\n    return s[::-1]",
+      "language": "python",
+      "execution_time": 0.02,
+      "memory_usage": 512,
+      "submitted_at": "2023-05-01T10:35:20"
+    }
+  ],
+  "started_at": "2023-05-01T10:00:00",
+  "completed_at": "2023-05-01T10:40:00",
+  "time_taken": 2400
+}

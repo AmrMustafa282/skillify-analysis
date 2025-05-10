@@ -1,0 +1,89 @@
+{
+ "testId": "test123",
+ "questions": [
+  {
+   "type": "MCQ",
+   "text": "What is 2 + 2?",
+   "options": {
+    "choices": [
+     { "id": "q5_a", "text": "3" },
+     { "id": "q5_b", "text": "4" },
+     { "id": "q5_c", "text": "5" }
+    ]
+   },
+   "correctAnswer": { "value": "q5_b" },
+   "difficulty": "EASY",
+   "order": 1
+  },
+  {
+   "type": "OPEN_ENDED",
+   "text": "Explain the concept of Object-Oriented Programming.",
+   "options": null,
+   "correctAnswer": null,
+   "difficulty": "MEDIUM",
+   "order": 6
+  },
+  {
+   "type": "MCQ",
+   "text": "Select all the continents.",
+   "options": {
+    "choices": [
+     { "id": "q7_a", "text": "Asia" },
+     { "id": "q7_b", "text": "France" },
+     { "id": "q7_c", "text": "Africa" },
+     { "id": "q7_d", "text": "North America" },
+     { "id": "q7_e", "text": "Brazil" }
+    ]
+   },
+   "correctAnswer": { "values": ["q7_a", "q7_c", "q7_d"] },
+   "difficulty": "EASY",
+   "order": 2
+  }
+ ],
+ "codingQuestions": [
+  {
+   "type": "CODING",
+   "text": "Implement a function to reverse a string without using built-in reverse methods.",
+   "language": "python",
+   "starterCode": "def reverse_string(s):\n    # Your code here",
+   "solutionCode": "def reverse_string(s):\n    return s[::-1]",
+   "testCases": [
+    {
+     "input": "hello",
+     "expected_output": "olleh",
+     "weight": 0.3
+    },
+    {
+     "input": "",
+     "expected_output": "",
+     "weight": 0.2
+    },
+    {
+     "input": "racecar",
+     "expected_output": "racecar",
+     "weight": 0.5
+    }
+   ],
+   "evaluationCriteria": {
+    "timeComplexity": "O(n)",
+    "spaceComplexity": "O(1)",
+    "constraints": [
+     "No use of language built-in reverse functions",
+     "Time limit: 500ms for input length 1000"
+    ]
+   },
+   "gradingRules": {
+    "testCaseWeight": 0.7,
+    "codeQualityWeight": 0.2,
+    "efficiencyWeight": 0.1,
+    "partialCredit": true
+   },
+   "metadata": {
+    "difficulty": "MEDIUM",
+    "tags": ["strings", "algorithms"],
+    "order": 3,
+    "estimatedDuration": 10
+   }
+  }
+ ]
+}

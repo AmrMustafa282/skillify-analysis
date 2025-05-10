@@ -1,0 +1,38 @@
+{
+  "solution_id": "333e4567-e89b-12d3-a456-426614174002",
+  "test_id": "111e4567-e89b-12d3-a456-426614174000",
+  "candidate_id": "444e4567-e89b-12d3-a456-426614174002",
+  "answers": [
+    {
+      "question_id": "1",
+      "answer_type": "MCQ",
+      "value": "q5_b",
+      "submitted_at": "2023-05-01T10:15:30"
+    },
+    {
+      "question_id": "6",
+      "answer_type": "OPEN_ENDED",
+      "value": "Object-Oriented Programming is a way to organize code using objects. Objects have properties and methods. It helps make code more organized and reusable.",
+      "submitted_at": "2023-05-01T10:25:45"
+    },
+    {
+      "question_id": "2",
+      "answer_type": "MCQ",
+      "values": ["q7_a", "q7_c", "q7_d", "q7_b"],
+      "submitted_at": "2023-05-01T10:10:15"
+    }
+  ],
+  "coding_answers": [
+    {
+      "question_id": "3",
+      "code": "def reverse_string(s):\n    # Create an empty string to store the result\n    result = \"\"\n    \n    # Iterate through the string in reverse order\n    for i in range(len(s) - 1, -1, -1):\n        result += s[i]\n    \n    return result",
+      "language": "python",
+      "execution_time": 0.08,
+      "memory_usage": 1024,
+      "submitted_at": "2023-05-01T10:35:20"
+    }
+  ],
+  "started_at": "2023-05-01T10:00:00",
+  "completed_at": "2023-05-01T10:50:00",
+  "time_taken": 3000
+}

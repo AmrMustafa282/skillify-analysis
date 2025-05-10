@@ -1,0 +1,38 @@
+{
+  "solution_id": "sol123",
+  "test_id": "test123",
+  "candidate_id": "cand123",
+  "answers": [
+    {
+      "question_id": "1",
+      "answer_type": "MCQ",
+      "value": "q5_b",
+      "submitted_at": "2023-01-01T00:10:00Z"
+    },
+    {
+      "question_id": "2",
+      "answer_type": "MCQ",
+      "values": ["q7_a", "q7_c", "q7_d"],
+      "submitted_at": "2023-01-01T00:15:00Z"
+    },
+    {
+      "question_id": "6",
+      "answer_type": "OPEN_ENDED",
+      "value": "Object-Oriented Programming (OOP) is a programming paradigm based on the concept of 'objects', which can contain data and code. The data is in the form of fields (often known as attributes or properties), and the code is in the form of procedures (often known as methods). A key feature of OOP is encapsulation, which bundles the data and methods that operate on the data into a single unit. Other important features include inheritance, polymorphism, and abstraction.",
+      "submitted_at": "2023-01-01T00:20:00Z"
+    }
+  ],
+  "coding_answers": [
+    {
+      "question_id": "3",
+      "code": "def reverse_string(s):\n    # Initialize an empty string to store the reversed result\n    reversed_str = ''\n    \n    # Iterate through the string in reverse order\n    for i in range(len(s) - 1, -1, -1):\n        reversed_str += s[i]\n    \n    return reversed_str",
+      "language": "python",
+      "execution_time": 0.05,
+      "memory_usage": 1024,
+      "submitted_at": "2023-01-01T00:30:00Z"
+    }
+  ],
+  "started_at": "2023-01-01T00:00:00Z",
+  "completed_at": "2023-01-01T00:30:00Z",
+  "time_taken": 1800
+}

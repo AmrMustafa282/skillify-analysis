@@ -1,0 +1,38 @@
+{
+  "solution_id": "333e4567-e89b-12d3-a456-426614174003",
+  "test_id": "111e4567-e89b-12d3-a456-426614174000",
+  "candidate_id": "444e4567-e89b-12d3-a456-426614174003",
+  "answers": [
+    {
+      "question_id": "1",
+      "answer_type": "MCQ",
+      "value": "q5_c",
+      "submitted_at": "2023-05-01T10:15:30"
+    },
+    {
+      "question_id": "6",
+      "answer_type": "OPEN_ENDED",
+      "value": "It's a way to code things.",
+      "submitted_at": "2023-05-01T10:25:45"
+    },
+    {
+      "question_id": "2",
+      "answer_type": "MCQ",
+      "values": ["q7_b", "q7_e"],
+      "submitted_at": "2023-05-01T10:10:15"
+    }
+  ],
+  "coding_answers": [
+    {
+      "question_id": "3",
+      "code": "def reverse_string(s):\n    # This function will reverse a string\n    # Step 1: Create a list from the string\n    chars = list(s)\n    \n    # Step 2: Create a new list to store the reversed string\n    reversed_chars = []\n    \n    # Step 3: Iterate through the original list in reverse\n    for i in range(len(chars)):\n        # Step 4: Append each character to the new list\n        reversed_chars.append(chars[len(chars) - 1 - i])\n    \n    # Step 5: Join the list back into a string\n    result = ''\n    for char in reversed_chars:\n        result = result + char\n    \n    # Step 6: Return the result\n    return result",
+      "language": "python",
+      "execution_time": 0.15,
+      "memory_usage": 2048,
+      "submitted_at": "2023-05-01T10:35:20"
+    }
+  ],
+  "started_at": "2023-05-01T10:00:00",
+  "completed_at": "2023-05-01T11:00:00",
+  "time_taken": 3600
+}

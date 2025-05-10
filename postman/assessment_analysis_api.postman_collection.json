@@ -1,0 +1,402 @@
+{
+ "info": {
+  "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  "name": "Assessment Analysis API",
+  "description": "API for analyzing coding solutions and generating reports",
+  "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+ },
+ "item": [
+  {
+   "name": "Health",
+   "item": [
+    {
+     "name": "Health Check",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/health",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "health"]
+      },
+      "description": "Returns the health status of the API"
+     },
+     "response": []
+    }
+   ],
+   "description": "Health check endpoints"
+  },
+  {
+   "name": "Authentication",
+   "item": [
+    {
+     "name": "Login",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"username\": \"test\",\n    \"password\": \"test\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5001/api/login",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "login"]
+      },
+      "description": "Authenticates a user and returns a JWT token (not required for current API version)"
+     },
+     "response": []
+    }
+   ],
+   "description": "Authentication endpoints (not required for current API version)"
+  },
+  {
+   "name": "Assessments",
+   "item": [
+    {
+     "name": "Get All Assessments",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/assessments",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments"]
+      },
+      "description": "Returns a list of all assessments"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Assessment by ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/assessments/test123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments", "test123"]
+      },
+      "description": "Returns a specific assessment by ID"
+     },
+     "response": []
+    },
+    {
+     "name": "Create Assessment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"testId\": \"test456\",\n    \"title\": \"JavaScript Programming Assessment\",\n    \"description\": \"This assessment tests your JavaScript programming skills.\",\n    \"duration\": 60,\n    \"questions\": [\n        {\n            \"order\": 1,\n            \"type\": \"MCQ\",\n            \"text\": \"What is the result of 2 + '2' in JavaScript?\",\n            \"options\": {\n                \"choices\": [\n                    {\n                        \"id\": \"q1_a\",\n                        \"text\": \"4\"\n                    },\n                    {\n                        \"id\": \"q1_b\",\n                        \"text\": \"'22'\"\n                    },\n                    {\n                        \"id\": \"q1_c\",\n                        \"text\": \"22\"\n                    },\n                    {\n                        \"id\": \"q1_d\",\n                        \"text\": \"TypeError\"\n                    }\n                ]\n            },\n            \"correctAnswer\": {\n                \"value\": \"q1_c\"\n            }\n        }\n    ],\n    \"codingQuestions\": [\n        {\n            \"order\": 2,\n            \"title\": \"Fibonacci Sequence\",\n            \"description\": \"Implement a function to generate the nth Fibonacci number.\",\n            \"language\": \"javascript\",\n            \"starterCode\": \"function fibonacci(n) {\\n    // Your code here\\n}\",\n            \"solutionCode\": \"function fibonacci(n) {\\n    if (n <= 1) return n;\\n    return fibonacci(n-1) + fibonacci(n-2);\\n}\",\n            \"testCases\": [\n                {\n                    \"input\": \"0\",\n                    \"expected_output\": \"0\",\n                    \"weight\": 0.2\n                },\n                {\n                    \"input\": \"1\",\n                    \"expected_output\": \"1\",\n                    \"weight\": 0.2\n                },\n                {\n                    \"input\": \"10\",\n                    \"expected_output\": \"55\",\n                    \"weight\": 0.6\n                }\n            ]\n        }\n    ]\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5001/api/assessments",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments"]
+      },
+      "description": "Creates a new assessment"
+     },
+     "response": []
+    },
+    {
+     "name": "Update Assessment",
+     "request": {
+      "method": "PUT",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"title\": \"Updated JavaScript Programming Assessment\",\n    \"description\": \"This assessment tests your JavaScript programming skills (updated).\",\n    \"duration\": 90\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5001/api/assessments/test456",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments", "test456"]
+      },
+      "description": "Updates an existing assessment"
+     },
+     "response": []
+    },
+    {
+     "name": "Delete Assessment",
+     "request": {
+      "method": "DELETE",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/assessments/test456",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments", "test456"]
+      },
+      "description": "Deletes an assessment"
+     },
+     "response": []
+    }
+   ],
+   "description": "Assessment management endpoints"
+  },
+  {
+   "name": "Solutions",
+   "item": [
+    {
+     "name": "Get All Solutions",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/solutions",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "solutions"]
+      },
+      "description": "Returns a list of all solutions"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Solution by ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/solutions/sol123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "solutions", "sol123"]
+      },
+      "description": "Returns a specific solution by ID"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Solutions by Test ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/assessments/test123/solutions",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "assessments", "test123", "solutions"]
+      },
+      "description": "Returns all solutions for a specific test"
+     },
+     "response": []
+    },
+    {
+     "name": "Create Solution",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"solution_id\": \"sol456\",\n    \"test_id\": \"test123\",\n    \"candidate_id\": \"cand456\",\n    \"answers\": [\n        {\n            \"question_id\": \"1\",\n            \"answer_type\": \"MCQ\",\n            \"value\": \"q5_b\",\n            \"submitted_at\": \"2023-01-01T00:10:00Z\"\n        },\n        {\n            \"question_id\": \"2\",\n            \"answer_type\": \"MCQ\",\n            \"values\": [\"q7_a\", \"q7_c\", \"q7_d\"],\n            \"submitted_at\": \"2023-01-01T00:15:00Z\"\n        },\n        {\n            \"question_id\": \"6\",\n            \"answer_type\": \"OPEN_ENDED\",\n            \"value\": \"Object-Oriented Programming (OOP) is a programming paradigm based on the concept of 'objects', which can contain data and code.\",\n            \"submitted_at\": \"2023-01-01T00:20:00Z\"\n        }\n    ],\n    \"coding_answers\": [\n        {\n            \"question_id\": \"3\",\n            \"code\": \"def reverse_string(s):\\n    result = ''\\n    for char in s:\\n        result = char + result\\n    return result\",\n            \"language\": \"python\",\n            \"execution_time\": 0.05,\n            \"memory_usage\": 1024,\n            \"submitted_at\": \"2023-01-01T00:30:00Z\"\n        }\n    ],\n    \"started_at\": \"2023-01-01T00:00:00Z\",\n    \"completed_at\": \"2023-01-01T00:30:00Z\",\n    \"time_taken\": 1800\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5001/api/solutions",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "solutions"]
+      },
+      "description": "Creates a new solution"
+     },
+     "response": []
+    }
+   ],
+   "description": "Solution management endpoints"
+  },
+  {
+   "name": "Analysis",
+   "item": [
+    {
+     "name": "Get Analysis by Solution ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/analysis/sol123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "analysis", "sol123"]
+      },
+      "description": "Returns analysis for a specific solution"
+     },
+     "response": []
+    },
+    {
+     "name": "Analyze Solution",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/analyze/solution/sol123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "analyze", "solution", "sol123"]
+      },
+      "description": "Analyzes a specific solution"
+     },
+     "response": []
+    },
+    {
+     "name": "Analyze Test",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/analyze/test/test123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "analyze", "test", "test123"]
+      },
+      "description": "Analyzes all solutions for a specific test"
+     },
+     "response": []
+    },
+    {
+     "name": "Analyze All",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/analyze/all",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "analyze", "all"]
+      },
+      "description": "Analyzes all unprocessed solutions"
+     },
+     "response": []
+    }
+   ],
+   "description": "Analysis endpoints"
+  },
+  {
+   "name": "Reports",
+   "item": [
+    {
+     "name": "Get All Reports",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/reports",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "reports"]
+      },
+      "description": "Returns a list of all reports"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Report by ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/reports/report123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "reports", "report123"]
+      },
+      "description": "Returns a specific report by ID"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Report by Test ID",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/reports/test/test123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "reports", "test", "test123"]
+      },
+      "description": "Returns report for a specific test"
+     },
+     "response": []
+    },
+    {
+     "name": "Generate Report",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/reports/generate/test123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "reports", "generate", "test123"]
+      },
+      "description": "Generates report for a specific test"
+     },
+     "response": []
+    },
+    {
+     "name": "Generate All Reports",
+     "request": {
+      "method": "POST",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5001/api/reports/generate/all",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5001",
+       "path": ["api", "reports", "generate", "all"]
+      },
+      "description": "Generates reports for all tests with analyzed solutions"
+     },
+     "response": []
+    }
+   ],
+   "description": "Report management endpoints"
+  }
+ ]
+}
