@@ -2,8 +2,6 @@
 
 A comprehensive Python-based system for analyzing coding assessments, evaluating solutions, and generating detailed reports.
 
-![Assessment Management System](https://via.placeholder.com/800x400?text=Assessment+Management+System)
-
 ## Overview
 
 The Assessment Management System is designed to help educators, hiring managers, and technical interviewers evaluate coding solutions with precision and consistency. The system analyzes solutions based on multiple dimensions:
@@ -70,7 +68,7 @@ assessment-system/
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/yourusername/assessment-management-system.git
+git clone https://github.com/amrmustafa282/assessment-management-system.git
 cd assessment-management-system
 ```
 
