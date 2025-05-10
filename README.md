@@ -97,6 +97,8 @@ pip install -r requirements.txt
 docker-compose up -d
 ```
 
+> **Important**: Docker is required for code execution. The system enforces Docker-only execution for security reasons and does not fall back to local execution.
+
 5. Make scripts executable:
 
 ```bash
@@ -216,14 +218,20 @@ The system includes a professional dataset with:
 ### Correctness Analysis
 
 - Executes code against test cases in a secure Docker environment
-- Supports Python, JavaScript, and Java code execution
+- Enforces Docker-only execution for security
+- Supports multiple programming languages:
+  - Python
+  - JavaScript
+  - Java
+  - Go
+  - Ruby
+  - C++
 - Automatically detects function names and parameters
 - Intelligently handles array inputs based on function signatures
 - Calculates correctness score based on test case results
 - Takes into account the number of passed tests
 - Provides detailed error messages and execution metrics
 - Handles permission errors gracefully when cleaning up temporary files
-- Falls back to local execution when Docker is not available
 
 ### Code Quality Analysis
 
