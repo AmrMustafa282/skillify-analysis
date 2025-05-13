@@ -22,7 +22,7 @@ fi
 export FLASK_APP=server.api
 export FLASK_ENV=development
 export DEBUG=true
-export PORT=5001
+export PORT=5000
 export SECRET_KEY="your_secret_key_here"  # Change this in production
 
 # Start the API server

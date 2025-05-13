@@ -72,6 +72,23 @@ class ReportSchema(Schema):
     statistics = fields.Dict(metadata={"description": "Report statistics"})
     generated_at = fields.Str(metadata={"description": "Generation timestamp"})
 
+class AnalysisJobSchema(Schema):
+    job_id = fields.Str(metadata={"description": "Job ID"})
+    job_type = fields.Str(metadata={"description": "Job type (solution, test, all)"})
+    job_data = fields.Dict(metadata={"description": "Job data"})
+    status = fields.Str(metadata={"description": "Job status (pending, running, completed, failed)"})
+    progress = fields.Int(metadata={"description": "Job progress (0-100)"})
+    created_at = fields.Str(metadata={"description": "Creation timestamp"})
+    updated_at = fields.Str(metadata={"description": "Last update timestamp"})
+    completed_at = fields.Str(metadata={"description": "Completion timestamp"})
+    result = fields.Dict(metadata={"description": "Job result"})
+    error = fields.Str(metadata={"description": "Error message (if any)"})
+
+class AnalysisJobLogSchema(Schema):
+    job_id = fields.Str(metadata={"description": "Job ID"})
+    timestamp = fields.Str(metadata={"description": "Log timestamp"})
+    message = fields.Str(metadata={"description": "Log message"})
+
 # Register schemas with spec
 spec.components.schema("LoginRequest", schema=LoginRequest)
 spec.components.schema("LoginResponse", schema=LoginResponse)
@@ -80,6 +97,8 @@ spec.components.schema("Assessment", schema=AssessmentSchema)
 spec.components.schema("Solution", schema=SolutionSchema)
 spec.components.schema("Analysis", schema=AnalysisSchema)
 spec.components.schema("Report", schema=ReportSchema)
+spec.components.schema("AnalysisJob", schema=AnalysisJobSchema)
+spec.components.schema("AnalysisJobLog", schema=AnalysisJobLogSchema)
 
 # Define security schemes (kept for future use but not required)
 spec.components.security_scheme(
@@ -446,8 +465,8 @@ spec.path(
     operations={
         "post": {
             "tags": ["Analysis"],
-            "summary": "Analyze solution",
-            "description": "Analyzes a specific solution",
+            "summary": "Analyze solution (Async)",
+            "description": "Starts an asynchronous analysis job for a specific solution",
             "parameters": [
                 {
                     "name": "solution_id",
@@ -459,7 +478,18 @@ spec.path(
             ],
             "responses": {
                 "200": {
-                    "description": "Solution analyzed successfully"
+                    "description": "Analysis job started successfully",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {"type": "string"},
+                                    "job_id": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
                 },
                 "404": {
                     "description": "Solution or assessment not found"
@@ -475,8 +505,8 @@ spec.path(
     operations={
         "post": {
             "tags": ["Analysis"],
-            "summary": "Analyze test",
-            "description": "Analyzes all solutions for a specific test",
+            "summary": "Analyze test (Async)",
+            "description": "Starts an asynchronous analysis job for all solutions in a specific test",
             "parameters": [
                 {
                     "name": "test_id",
@@ -488,7 +518,18 @@ spec.path(
             ],
             "responses": {
                 "200": {
-                    "description": "Solutions analyzed successfully"
+                    "description": "Analysis job started successfully",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {"type": "string"},
+                                    "job_id": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
                 },
                 "404": {
                     "description": "Assessment not found or no solutions found"
@@ -504,14 +545,118 @@ spec.path(
     operations={
         "post": {
             "tags": ["Analysis"],
-            "summary": "Analyze all",
-            "description": "Analyzes all unprocessed solutions",
+            "summary": "Analyze all (Async)",
+            "description": "Starts an asynchronous analysis job for all unprocessed solutions",
             "responses": {
                 "200": {
-                    "description": "Solutions analyzed successfully"
+                    "description": "Analysis job started successfully",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {"type": "string"},
+                                    "job_id": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
                 },
                 "404": {
                     "description": "No unprocessed solutions found"
+                }
+            }
+        }
+    }
+)
+
+# Analysis jobs endpoints
+spec.path(
+    path="/api/analysis/jobs",
+    operations={
+        "get": {
+            "tags": ["Analysis Jobs"],
+            "summary": "Get all analysis jobs",
+            "description": "Returns a list of all analysis jobs",
+            "responses": {
+                "200": {
+                    "description": "Successful operation",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/AnalysisJob"}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+)
+
+# Analysis job by ID endpoint
+spec.path(
+    path="/api/analysis/jobs/{job_id}",
+    operations={
+        "get": {
+            "tags": ["Analysis Jobs"],
+            "summary": "Get analysis job by ID",
+            "description": "Returns a specific analysis job by ID",
+            "parameters": [
+                {
+                    "name": "job_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the analysis job to retrieve"
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "Successful operation",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/AnalysisJob"}
+                        }
+                    }
+                },
+                "404": {
+                    "description": "Analysis job not found"
+                }
+            }
+        }
+    }
+)
+
+# Analysis job logs endpoint
+spec.path(
+    path="/api/analysis/jobs/{job_id}/logs",
+    operations={
+        "get": {
+            "tags": ["Analysis Jobs"],
+            "summary": "Get analysis job logs",
+            "description": "Returns logs for a specific analysis job",
+            "parameters": [
+                {
+                    "name": "job_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the analysis job to retrieve logs for"
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "Successful operation",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "array",
+                                "items": {"$ref": "#/components/schemas/AnalysisJobLog"}
+                            }
+                        }
+                    }
                 }
             }
         }

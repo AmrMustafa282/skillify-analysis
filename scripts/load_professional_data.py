@@ -784,7 +784,7 @@ def load_professional_data(drop_existing=False):
     for test in TEST_TEMPLATES:
         test_id = test["testId"]
         print(f"Generating solutions for test {test_id}...")
-        solutions = generate_solutions(test_id, num_solutions=5)
+        solutions = generate_solutions(test_id, num_solutions=50)
         all_solutions.extend(solutions)
 
         for solution in solutions:

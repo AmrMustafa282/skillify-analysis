@@ -8,6 +8,7 @@ from typing import Dict, List, Optional, Any
 from pymongo import MongoClient
 from pymongo.collection import Collection
 from pymongo.database import Database
+from bson.objectid import ObjectId
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -29,6 +30,8 @@ class DatabaseService:
         self.solutions_collection = os.getenv("SOLUTIONS_COLLECTION", "solutions")
         self.analysis_collection = os.getenv("ANALYSIS_COLLECTION", "analysis")
         self.reports_collection = os.getenv("REPORTS_COLLECTION", "reports")
+        self.analysis_jobs_collection = os.getenv("ANALYSIS_JOBS_COLLECTION", "analysis_jobs")
+        self.analysis_job_logs_collection = os.getenv("ANALYSIS_JOB_LOGS_COLLECTION", "analysis_job_logs")
 
         # Connect to MongoDB
         try:
@@ -64,6 +67,14 @@ class DatabaseService:
         if self.reports_collection not in existing_collections:
             logger.info(f"Creating collection: {self.reports_collection}")
             self._db.create_collection(self.reports_collection)
+
+        if self.analysis_jobs_collection not in existing_collections:
+            logger.info(f"Creating collection: {self.analysis_jobs_collection}")
+            self._db.create_collection(self.analysis_jobs_collection)
+
+        if self.analysis_job_logs_collection not in existing_collections:
+            logger.info(f"Creating collection: {self.analysis_job_logs_collection}")
+            self._db.create_collection(self.analysis_job_logs_collection)
 
     def close(self):
         """Close the MongoDB connection."""
@@ -426,6 +437,108 @@ class DatabaseService:
         assessments = list(collection.find({}, {"testId": 1}))
         return [assessment.get("testId") for assessment in assessments if "testId" in assessment]
 
+    # Analysis job operations
+
+    def store_analysis_job(self, job: Dict) -> str:
+        """Store an analysis job in the database.
+
+        Args:
+            job: Analysis job document
+
+        Returns:
+            ID of the stored job
+        """
+        collection = self.get_collection(self.analysis_jobs_collection)
+        result = collection.insert_one(job)
+        return str(result.inserted_id)
+
+    def get_analysis_job(self, job_id: str) -> Optional[Dict]:
+        """Get an analysis job by ID.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            Analysis job document or None if not found
+        """
+        collection = self.get_collection(self.analysis_jobs_collection)
+        job = collection.find_one({"job_id": job_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if job and "_id" in job:
+            job["_id"] = str(job["_id"])
+
+        return job
+
+    def update_analysis_job(self, job_id: str, job: Dict) -> bool:
+        """Update an analysis job.
+
+        Args:
+            job_id: Job ID
+            job: Updated job data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        collection = self.get_collection(self.analysis_jobs_collection)
+        result = collection.update_one({"job_id": job_id}, {"$set": job})
+        return result.modified_count > 0
+
+    def get_all_analysis_jobs(self) -> List[Dict]:
+        """Get all analysis jobs.
+
+        Returns:
+            List of analysis job documents
+        """
+        collection = self.get_collection(self.analysis_jobs_collection)
+        jobs = list(collection.find())
+
+        # Convert ObjectId to string for JSON serialization
+        for job in jobs:
+            if "_id" in job:
+                job["_id"] = str(job["_id"])
+
+        return jobs
+
+    def add_analysis_job_log(self, job_id: str, log_entry: Dict) -> str:
+        """Add a log entry to an analysis job.
+
+        Args:
+            job_id: Job ID
+            log_entry: Log entry document
+
+        Returns:
+            ID of the stored log entry
+        """
+        collection = self.get_collection(self.analysis_job_logs_collection)
+        log_entry["job_id"] = job_id
+        result = collection.insert_one(log_entry)
+        return str(result.inserted_id)
+
+    def get_analysis_job_logs(self, job_id: str) -> List[Dict]:
+        """Get all log entries for an analysis job.
+
+        Args:
+            job_id: Job ID
+
+        Returns:
+            List of log entry documents
+        """
+        collection = self.get_collection(self.analysis_job_logs_collection)
+        logs = list(collection.find({"job_id": job_id}).sort("timestamp", 1))
+
+        # Convert ObjectId to string for JSON serialization
+        for log in logs:
+            if "_id" in log:
+                log["_id"] = str(log["_id"])
+
+            # Convert any other ObjectId fields to strings
+            for key, value in log.items():
+                if isinstance(value, ObjectId):
+                    log[key] = str(value)
+
+        return logs
+
     def drop_collections(self) -> None:
         """Drop all collections in the database."""
         logger.info("Dropping existing collections")
@@ -433,6 +546,8 @@ class DatabaseService:
         self._db.drop_collection(self.solutions_collection)
         self._db.drop_collection(self.analysis_collection)
         self._db.drop_collection(self.reports_collection)
+        self._db.drop_collection(self.analysis_jobs_collection)
+        self._db.drop_collection(self.analysis_job_logs_collection)
 
         # Recreate collections
         self._ensure_collections_exist()

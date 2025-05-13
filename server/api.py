@@ -16,6 +16,7 @@ import jwt
 from server.services.database_service import DatabaseService
 from server.services.analysis_service import AnalysisService
 from server.services.reporting_service import ReportingService
+from server.services.background_worker import BackgroundWorker
 from server.swagger_new import spec, swagger_ui_blueprint, SWAGGER_URL
 from server.utils.json_encoder import MongoJSONEncoder
 
@@ -44,6 +45,7 @@ app.config["JWT_EXPIRATION_DELTA"] = int(os.getenv("JWT_EXPIRATION_DELTA", 86400
 db_service = DatabaseService()
 analysis_service = AnalysisService(db_service)
 reporting_service = ReportingService(db_service)
+background_worker = BackgroundWorker(db_service, analysis_service)
 
 # Authentication decorator
 def token_required(f):
@@ -259,32 +261,43 @@ def get_analysis(solution_id):
 
 @app.route("/api/analyze/solution/<solution_id>", methods=["POST"])
 def analyze_solution(solution_id):
-    """Analyze a specific solution."""
+    """Analyze a specific solution asynchronously."""
     # Get solution
     solution = db_service.get_solution_by_id(solution_id)
     if not solution:
         return jsonify({"message": "Solution not found"}), 404
 
-    # Get assessment
-    test_id = solution.get("test_id")
-    assessment = db_service.get_assessment_by_id(test_id)
-    if not assessment:
-        return jsonify({"message": "Assessment not found"}), 404
+    # Check if solution is already being analyzed
+    existing_jobs = db_service.get_all_analysis_jobs()
+    for job in existing_jobs:
+        if (job["job_type"] == "solution" and
+            job["job_data"].get("solution_id") == solution_id and
+            job["status"] in ["pending", "running"]):
+            return jsonify({
+                "message": "Solution is already being analyzed",
+                "job_id": job["job_id"],
+                "status": job["status"]
+            })
 
-    # Analyze solution
-    analysis_result = analysis_service.analyze_solution(solution, assessment)
+    # Check if solution is already analyzed
+    existing_analysis = db_service.get_analysis_by_solution_id(solution_id)
+    if existing_analysis:
+        return jsonify({
+            "message": "Solution is already analyzed",
+            "analysis_id": existing_analysis.get("analysis_id") or existing_analysis.get("_id")
+        })
 
-    # Store analysis
-    analysis_id = db_service.store_analysis(analysis_result)
+    # Start analysis job
+    job_id = background_worker.start_analysis_job("solution", {"solution_id": solution_id})
 
     return jsonify({
-        "message": "Solution analyzed successfully",
-        "analysis_id": analysis_id
+        "message": "Solution analysis started",
+        "job_id": job_id
     })
 
 @app.route("/api/analyze/test/<test_id>", methods=["POST"])
 def analyze_test(test_id):
-    """Analyze all solutions for a specific test."""
+    """Analyze all solutions for a specific test asynchronously."""
     # Get assessment
     assessment = db_service.get_assessment_by_id(test_id)
     if not assessment:
@@ -295,60 +308,80 @@ def analyze_test(test_id):
     if not solutions:
         return jsonify({"message": "No solutions found for this test"}), 404
 
-    # Analyze solutions
-    analysis_ids = []
-    for solution in solutions:
-        # Skip already analyzed solutions
-        if db_service.get_analysis_by_solution_id(solution["solution_id"]):
-            continue
+    # Check if test is already being analyzed
+    existing_jobs = db_service.get_all_analysis_jobs()
+    for job in existing_jobs:
+        if (job["job_type"] == "test" and
+            job["job_data"].get("test_id") == test_id and
+            job["status"] in ["pending", "running"]):
+            return jsonify({
+                "message": "Test is already being analyzed",
+                "job_id": job["job_id"],
+                "status": job["status"]
+            })
 
-        # Analyze solution
-        analysis_result = analysis_service.analyze_solution(solution, assessment)
-
-        # Store analysis
-        analysis_id = db_service.store_analysis(analysis_result)
-        analysis_ids.append(analysis_id)
+    # Start analysis job
+    job_id = background_worker.start_analysis_job("test", {"test_id": test_id})
 
     return jsonify({
-        "message": f"Analyzed {len(analysis_ids)} solutions",
-        "analysis_ids": analysis_ids
+        "message": "Test analysis started",
+        "job_id": job_id
     })
 
 @app.route("/api/analyze/all", methods=["POST"])
 def analyze_all():
-    """Analyze all unprocessed solutions."""
-    # Get all solutions
-    solutions = db_service.get_all_solutions()
+    """Analyze all unprocessed solutions asynchronously."""
+    # Check if there's already an "all" analysis job running
+    existing_jobs = db_service.get_all_analysis_jobs()
+    for job in existing_jobs:
+        if (job["job_type"] == "all" and job["status"] in ["pending", "running"]):
+            return jsonify({
+                "message": "All solutions are already being analyzed",
+                "job_id": job["job_id"],
+                "status": job["status"]
+            })
 
-    # Filter unprocessed solutions
-    unprocessed = []
-    for solution in solutions:
-        if not db_service.get_analysis_by_solution_id(solution["solution_id"]):
-            unprocessed.append(solution)
-
-    if not unprocessed:
-        return jsonify({"message": "No unprocessed solutions found"}), 404
-
-    # Analyze solutions
-    analysis_ids = []
-    for solution in unprocessed:
-        # Get assessment
-        test_id = solution.get("test_id")
-        assessment = db_service.get_assessment_by_id(test_id)
-        if not assessment:
-            continue
-
-        # Analyze solution
-        analysis_result = analysis_service.analyze_solution(solution, assessment)
-
-        # Store analysis
-        analysis_id = db_service.store_analysis(analysis_result)
-        analysis_ids.append(analysis_id)
+    # Start analysis job
+    job_id = background_worker.start_analysis_job("all", {})
 
     return jsonify({
-        "message": f"Analyzed {len(analysis_ids)} solutions",
-        "analysis_ids": analysis_ids
+        "message": "Analysis of all unprocessed solutions started",
+        "job_id": job_id
     })
+
+# Analysis job endpoints
+
+@app.route("/api/analysis/jobs", methods=["GET"])
+def get_analysis_jobs():
+    """Get all analysis jobs."""
+    jobs = db_service.get_all_analysis_jobs()
+    return jsonify(jobs)
+
+@app.route("/api/analysis/jobs/<job_id>", methods=["GET"])
+def get_analysis_job(job_id):
+    """Get a specific analysis job."""
+    job = background_worker.get_job_status(job_id)
+
+    if not job:
+        return jsonify({"message": "Analysis job not found"}), 404
+
+    return jsonify(job)
+
+@app.route("/api/analysis/jobs/<job_id>/logs", methods=["GET"])
+def get_analysis_job_logs(job_id):
+    """Get logs for a specific analysis job."""
+    logs = background_worker.get_job_logs(job_id)
+
+    if not logs:
+        return jsonify([])
+
+    # Convert any ObjectId to string
+    for log in logs:
+        for key, value in list(log.items()):
+            if hasattr(value, '__str__') and not isinstance(value, (str, int, float, bool, type(None))):
+                log[key] = str(value)
+
+    return jsonify(logs)
 
 # Report endpoints
 
