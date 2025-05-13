@@ -105,7 +105,13 @@ class DatabaseService:
             Assessment document or None if not found
         """
         collection = self.get_collection(self.assessments_collection)
-        return collection.find_one({"testId": test_id})
+        assessment = collection.find_one({"testId": test_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if assessment and "_id" in assessment:
+            assessment["_id"] = str(assessment["_id"])
+
+        return assessment
 
     def get_all_assessments(self) -> List[Dict]:
         """Get all assessments.
