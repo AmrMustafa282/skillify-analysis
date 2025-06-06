@@ -643,7 +643,13 @@ def test_code(test_id):
 
         # Execute the code with test cases
         test_cases = coding_question.get("testCases", [])
-        results = code_executor.execute_code_with_tests(code, language, test_cases)
+        # results = code_executor.execute_code_with_tests(code, language, test_cases)
+        results = code_executor.execute_code(
+            code=code,
+            language=language,
+            test_cases=test_cases,
+            timeout=15  # 15 seconds timeout
+        )
 
         return jsonify({
             "message": "Code tested successfully",
