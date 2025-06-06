@@ -112,6 +112,46 @@ class CodeExecutionService:
 
         return SafeTempDir(prefix="code_execution_")
 
+    def execute_code_with_tests(self, code: str, language: str, test_cases: List[Dict],
+                               timeout: int = DEFAULT_TIMEOUT) -> Dict[str, Any]:
+        """Execute code with test cases and return formatted results for API.
+
+        Args:
+            code: The code to execute
+            language: The programming language
+            test_cases: List of test cases with input and expected output
+            timeout: Maximum execution time in seconds
+
+        Returns:
+            Dictionary with success status and test results
+        """
+        test_results = self.execute_code(code, language, test_cases, timeout)
+
+        # Check if there was an error
+        if len(test_results) == 1 and test_results[0].get("test_case_id") == "error":
+            return {
+                "success": False,
+                "error": test_results[0].get("error_message", "Unknown error"),
+                "test_results": []
+            }
+
+        # Calculate overall success
+        passed_tests = sum(1 for result in test_results if result.get("passed", False))
+        total_tests = len(test_results)
+        overall_success = passed_tests == total_tests
+
+        return {
+            "success": overall_success,
+            "test_results": test_results,
+            "total_tests": total_tests,
+            "passed_tests": passed_tests,
+            "execution_summary": {
+                "total_execution_time": sum(result.get("execution_time", 0) for result in test_results),
+                "average_execution_time": sum(result.get("execution_time", 0) for result in test_results) / max(1, total_tests),
+                "total_memory_usage": sum(result.get("memory_usage", 0) for result in test_results)
+            }
+        }
+
     def execute_code(self, code: str, language: str, test_cases: List[Dict],
                      timeout: int = DEFAULT_TIMEOUT) -> List[Dict]:
         """Execute code with the given test cases in a secure Docker environment.

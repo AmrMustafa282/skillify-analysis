@@ -663,6 +663,290 @@ spec.path(
     }
 )
 
+# Assessment submission endpoints
+spec.path(
+    path="/api/assessments/{test_id}/start",
+    operations={
+        "post": {
+            "tags": ["Assessment Submission"],
+            "summary": "Start assessment",
+            "description": "Start an assessment for a candidate",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {"type": "string"}
+                            },
+                            "required": ["candidate_id"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Assessment started successfully"
+                },
+                "400": {
+                    "description": "Invalid request data"
+                },
+                "404": {
+                    "description": "Assessment not found"
+                },
+                "409": {
+                    "description": "Assessment already started for this candidate"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/submit/coding",
+    operations={
+        "post": {
+            "tags": ["Assessment Submission"],
+            "summary": "Submit coding answer",
+            "description": "Submit a coding answer for an assessment",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {"type": "string"},
+                                "question_id": {"type": "string"},
+                                "code": {"type": "string"},
+                                "language": {"type": "string"},
+                                "execution_time": {"type": "number"},
+                                "memory_usage": {"type": "integer"}
+                            },
+                            "required": ["candidate_id", "question_id", "code", "language"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Coding answer submitted successfully"
+                },
+                "400": {
+                    "description": "Invalid request data"
+                },
+                "404": {
+                    "description": "Assessment not found"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/submit/complete",
+    operations={
+        "post": {
+            "tags": ["Assessment Submission"],
+            "summary": "Complete assessment",
+            "description": "Complete an assessment with all regular answers for a candidate",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {"type": "string"},
+                                "answers": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "question_id": {"type": "string"},
+                                            "answer_type": {"type": "string", "enum": ["MCQ", "OPEN_ENDED"]},
+                                            "value": {"type": "string"}
+                                        },
+                                        "required": ["question_id", "answer_type", "value"]
+                                    }
+                                }
+                            },
+                            "required": ["candidate_id", "answers"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Assessment completed successfully"
+                },
+                "400": {
+                    "description": "Invalid request data"
+                },
+                "404": {
+                    "description": "Assessment or solution not found"
+                },
+                "409": {
+                    "description": "Assessment already completed"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/candidate/{candidate_id}/solution",
+    operations={
+        "get": {
+            "tags": ["Assessment Submission"],
+            "summary": "Get candidate solution",
+            "description": "Get the current solution for a candidate in an assessment",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                },
+                {
+                    "name": "candidate_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the candidate"
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "Successful operation",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/Solution"}
+                        }
+                    }
+                },
+                "404": {
+                    "description": "Assessment or solution not found"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/test-code",
+    operations={
+        "post": {
+            "tags": ["Code Testing"],
+            "summary": "Test coding solution",
+            "description": "Test a coding solution using Docker containers",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "question_id": {"type": "string"},
+                                "code": {"type": "string"},
+                                "language": {"type": "string", "enum": ["python", "javascript", "java", "go", "ruby", "cpp"]}
+                            },
+                            "required": ["question_id", "code", "language"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Code tested successfully",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "message": {"type": "string"},
+                                    "results": {
+                                        "type": "object",
+                                        "properties": {
+                                            "success": {"type": "boolean"},
+                                            "test_results": {
+                                                "type": "array",
+                                                "items": {
+                                                    "type": "object",
+                                                    "properties": {
+                                                        "test_case_id": {"type": "string"},
+                                                        "passed": {"type": "boolean"},
+                                                        "actual_output": {"type": "string"},
+                                                        "expected_output": {"type": "string"},
+                                                        "execution_time": {"type": "number"},
+                                                        "memory_usage": {"type": "number"},
+                                                        "error_message": {"type": "string"}
+                                                    }
+                                                }
+                                            },
+                                            "total_tests": {"type": "integer"},
+                                            "passed_tests": {"type": "integer"}
+                                        }
+                                    },
+                                    "question_id": {"type": "string"},
+                                    "language": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
+                },
+                "400": {
+                    "description": "Invalid request data"
+                },
+                "404": {
+                    "description": "Assessment or coding question not found"
+                },
+                "500": {
+                    "description": "Error testing code"
+                }
+            }
+        }
+    }
+)
+
 # Reports endpoints
 spec.path(
     path="/api/reports",

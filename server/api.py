@@ -6,6 +6,7 @@ API Server for Assessment Analysis System
 import os
 import logging
 import json
+import uuid
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -382,6 +383,281 @@ def get_analysis_job_logs(job_id):
                 log[key] = str(value)
 
     return jsonify(logs)
+
+# Assessment submission endpoints
+
+@app.route("/api/assessments/<test_id>/start", methods=["POST"])
+def start_assessment(test_id):
+    """Start an assessment for a candidate."""
+    data = request.get_json()
+
+    # Validate required fields
+    if "candidate_id" not in data:
+        return jsonify({"message": "Missing required field: candidate_id"}), 400
+
+    candidate_id = data["candidate_id"]
+
+    # Check if assessment exists
+    assessment = db_service.get_assessment_by_id(test_id)
+    if not assessment:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # Check if solution already exists
+    existing_solution = db_service.get_solution_by_test_and_candidate(test_id, candidate_id)
+    if existing_solution:
+        return jsonify({
+            "message": "Assessment already started for this candidate",
+            "solution_id": existing_solution["solution_id"],
+            "started_at": existing_solution["started_at"]
+        }), 409
+
+    # Create new solution
+    solution_id = f"{test_id}-{candidate_id}-{uuid.uuid4().hex[:8]}"
+    solution = {
+        "solution_id": solution_id,
+        "test_id": test_id,
+        "candidate_id": candidate_id,
+        "answers": [],
+        "coding_answers": [],
+        "started_at": datetime.now().isoformat(),
+        "completed_at": None,
+        "time_taken": None
+    }
+    db_service.store_solution(solution)
+
+    return jsonify({
+        "message": "Assessment started successfully",
+        "solution_id": solution_id,
+        "started_at": solution["started_at"]
+    })
+
+@app.route("/api/assessments/<test_id>/submit/coding", methods=["POST"])
+def submit_coding_answer(test_id):
+    """Submit a coding answer for an assessment."""
+    data = request.get_json()
+
+    # Validate required fields
+    required_fields = ["candidate_id", "question_id", "code", "language"]
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"message": f"Missing required field: {field}"}), 400
+
+    candidate_id = data["candidate_id"]
+    question_id = data["question_id"]
+    code = data["code"]
+    language = data["language"]
+    execution_time = data.get("execution_time", 0.0)
+    memory_usage = data.get("memory_usage", 0)
+
+    # Check if assessment exists
+    assessment = db_service.get_assessment_by_id(test_id)
+    if not assessment:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # Find or create solution
+    solution = db_service.get_solution_by_test_and_candidate(test_id, candidate_id)
+
+    if not solution:
+        # Create new solution
+        solution_id = f"{test_id}-{candidate_id}-{uuid.uuid4().hex[:8]}"
+        solution = {
+            "solution_id": solution_id,
+            "test_id": test_id,
+            "candidate_id": candidate_id,
+            "answers": [],
+            "coding_answers": [],
+            "started_at": datetime.now().isoformat(),
+            "completed_at": None,
+            "time_taken": None
+        }
+        db_service.store_solution(solution)
+    else:
+        solution_id = solution["solution_id"]
+
+    # For coding questions, we allow multiple submissions (user can update their code)
+    # Remove existing coding answer for this question if it exists
+    solution["coding_answers"] = [
+        answer for answer in solution.get("coding_answers", [])
+        if answer["question_id"] != question_id
+    ]
+
+    # Create new coding answer
+    new_coding_answer = {
+        "question_id": question_id,
+        "code": code,
+        "language": language,
+        "execution_time": execution_time,
+        "memory_usage": memory_usage,
+        "submitted_at": datetime.now().isoformat()
+    }
+
+    # Add coding answer to solution
+    solution["coding_answers"].append(new_coding_answer)
+
+    # Update solution in database
+    db_service.update_solution(solution_id, solution)
+
+    return jsonify({
+        "message": "Coding answer submitted successfully",
+        "solution_id": solution_id,
+        "question_id": question_id,
+        "coding_answer": new_coding_answer
+    })
+
+@app.route("/api/assessments/<test_id>/submit/complete", methods=["POST"])
+def complete_assessment(test_id):
+    """Complete an assessment with all regular answers for a candidate."""
+    data = request.get_json()
+
+    # Validate required fields
+    required_fields = ["candidate_id", "answers"]
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"message": f"Missing required field: {field}"}), 400
+
+    candidate_id = data["candidate_id"]
+    answers = data["answers"]
+
+    # Validate answers format
+    if not isinstance(answers, list):
+        return jsonify({"message": "answers must be a list"}), 400
+
+    # Validate each answer
+    for i, answer in enumerate(answers):
+        required_answer_fields = ["question_id", "answer_type", "value"]
+        for field in required_answer_fields:
+            if field not in answer:
+                return jsonify({"message": f"Missing required field '{field}' in answer {i+1}"}), 400
+
+        # Validate answer type
+        if answer["answer_type"] not in ["MCQ", "OPEN_ENDED"]:
+            return jsonify({"message": f"Invalid answer_type in answer {i+1}. Must be 'MCQ' or 'OPEN_ENDED'"}), 400
+
+    # Check if assessment exists
+    assessment = db_service.get_assessment_by_id(test_id)
+    if not assessment:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # Find solution
+    solution = db_service.get_solution_by_test_and_candidate(test_id, candidate_id)
+    if not solution:
+        return jsonify({"message": "No solution found for this candidate. Please start the assessment first."}), 404
+
+    # Check if assessment is already completed
+    if solution.get("completed_at"):
+        return jsonify({
+            "message": "Assessment already completed",
+            "solution_id": solution["solution_id"],
+            "completed_at": solution["completed_at"]
+        }), 409
+
+    # Add timestamps to answers and store them
+    submitted_at = datetime.now().isoformat()
+    processed_answers = []
+
+    for answer in answers:
+        processed_answer = {
+            "question_id": answer["question_id"],
+            "answer_type": answer["answer_type"],
+            "value": answer["value"],
+            "submitted_at": submitted_at
+        }
+        processed_answers.append(processed_answer)
+
+    # Calculate time taken
+    started_at = datetime.fromisoformat(solution["started_at"])
+    completed_at = datetime.now()
+    time_taken = int((completed_at - started_at).total_seconds())
+
+    # Update solution with all answers
+    solution["answers"] = processed_answers
+    solution["completed_at"] = completed_at.isoformat()
+    solution["time_taken"] = time_taken
+
+    # Update solution in database
+    db_service.update_solution(solution["solution_id"], solution)
+
+    return jsonify({
+        "message": "Assessment completed successfully",
+        "solution_id": solution["solution_id"],
+        "completed_at": solution["completed_at"],
+        "time_taken": time_taken,
+        "answers_submitted": len(processed_answers)
+    })
+
+@app.route("/api/assessments/<test_id>/candidate/<candidate_id>/solution", methods=["GET"])
+def get_candidate_solution(test_id, candidate_id):
+    """Get the current solution for a candidate in an assessment."""
+    # Check if assessment exists
+    assessment = db_service.get_assessment_by_id(test_id)
+    if not assessment:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # Find solution
+    solution = db_service.get_solution_by_test_and_candidate(test_id, candidate_id)
+    if not solution:
+        return jsonify({"message": "No solution found for this candidate"}), 404
+
+    return jsonify(solution)
+
+@app.route("/api/assessments/<test_id>/test-code", methods=["POST"])
+def test_code(test_id):
+    """Test coding solution using Docker."""
+    data = request.get_json()
+
+    # Validate required fields
+    required_fields = ["question_id", "code", "language"]
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"message": f"Missing required field: {field}"}), 400
+
+    question_id = data["question_id"]
+    code = data["code"]
+    language = data["language"]
+
+    # Check if assessment exists
+    assessment = db_service.get_assessment_by_id(test_id)
+    if not assessment:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # Find the coding question
+    coding_question = None
+    for cq in assessment.get("codingQuestions", []):
+        if str(cq.get("order")) == str(question_id):
+            coding_question = cq
+            break
+
+    if not coding_question:
+        return jsonify({"message": "Coding question not found"}), 404
+
+    # Validate language
+    if coding_question.get("language") != language:
+        return jsonify({
+            "message": f"Invalid language. Expected {coding_question.get('language')}, got {language}"
+        }), 400
+
+    try:
+        # Import and use the code execution service
+        from server.services.code_execution_service import CodeExecutionService
+        code_executor = CodeExecutionService()
+
+        # Execute the code with test cases
+        test_cases = coding_question.get("testCases", [])
+        results = code_executor.execute_code_with_tests(code, language, test_cases)
+
+        return jsonify({
+            "message": "Code tested successfully",
+            "results": results,
+            "question_id": question_id,
+            "language": language
+        })
+
+    except Exception as e:
+        logger.error(f"Error testing code: {str(e)}")
+        return jsonify({
+            "message": "Error testing code",
+            "error": str(e)
+        }), 500
 
 # Report endpoints
 

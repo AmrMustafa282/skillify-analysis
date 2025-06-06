@@ -188,7 +188,54 @@ class DatabaseService:
             Solution document or None if not found
         """
         collection = self.get_collection(self.solutions_collection)
-        return collection.find_one({"solution_id": solution_id})
+        solution = collection.find_one({"solution_id": solution_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if solution and "_id" in solution:
+            solution["_id"] = str(solution["_id"])
+
+        return solution
+
+    def get_solution_by_test_and_candidate(self, test_id: str, candidate_id: str) -> Optional[Dict]:
+        """Get a solution by test ID and candidate ID.
+
+        Args:
+            test_id: Test ID
+            candidate_id: Candidate ID
+
+        Returns:
+            Solution document or None if not found
+        """
+        collection = self.get_collection(self.solutions_collection)
+        solution = collection.find_one({"test_id": test_id, "candidate_id": candidate_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if solution and "_id" in solution:
+            solution["_id"] = str(solution["_id"])
+
+        return solution
+
+    def update_solution(self, solution_id: str, solution_data: Dict) -> bool:
+        """Update a solution.
+
+        Args:
+            solution_id: Solution ID
+            solution_data: Updated solution data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        collection = self.get_collection(self.solutions_collection)
+
+        # Remove _id from solution_data if present to avoid update conflicts
+        if "_id" in solution_data:
+            del solution_data["_id"]
+
+        result = collection.update_one(
+            {"solution_id": solution_id},
+            {"$set": solution_data}
+        )
+        return result.modified_count > 0
 
     def get_solutions_by_test_id(self, test_id: str) -> List[Dict]:
         """Get all solutions for a test.
