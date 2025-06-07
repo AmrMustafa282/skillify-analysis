@@ -947,6 +947,169 @@ spec.path(
     }
 )
 
+# Assessment state management endpoints
+spec.path(
+    path="/api/assessments/{test_id}/status",
+    operations={
+        "get": {
+            "tags": ["Assessment State Management"],
+            "summary": "Get assessment status",
+            "description": "Get the current status of an assessment for a candidate",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                },
+                {
+                    "name": "candidate_id",
+                    "in": "query",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the candidate"
+                }
+            ],
+            "responses": {
+                "200": {
+                    "description": "Assessment status retrieved successfully",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {"type": "string", "enum": ["not_started", "in_progress", "completed", "expired"]},
+                                    "message": {"type": "string"},
+                                    "time_remaining": {"type": "integer"},
+                                    "solution_id": {"type": "string"}
+                                }
+                            }
+                        }
+                    }
+                },
+                "400": {
+                    "description": "Missing candidate_id parameter"
+                },
+                "404": {
+                    "description": "Assessment not found"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/save-progress",
+    operations={
+        "post": {
+            "tags": ["Assessment State Management"],
+            "summary": "Save assessment progress",
+            "description": "Auto-save assessment progress including draft answers",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {"type": "string"},
+                                "draft_answers": {"type": "object"},
+                                "current_question": {"type": "string"},
+                                "progress_data": {"type": "object"}
+                            },
+                            "required": ["candidate_id"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Progress saved successfully"
+                },
+                "400": {
+                    "description": "Invalid request data"
+                },
+                "404": {
+                    "description": "Assessment not found or not started"
+                },
+                "409": {
+                    "description": "Assessment already completed"
+                },
+                "410": {
+                    "description": "Assessment time has expired"
+                }
+            }
+        }
+    }
+)
+
+spec.path(
+    path="/api/assessments/{test_id}/heartbeat",
+    operations={
+        "post": {
+            "tags": ["Assessment State Management"],
+            "summary": "Assessment heartbeat",
+            "description": "Keep assessment session alive and check time remaining",
+            "parameters": [
+                {
+                    "name": "test_id",
+                    "in": "path",
+                    "required": True,
+                    "schema": {"type": "string"},
+                    "description": "ID of the test"
+                }
+            ],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "candidate_id": {"type": "string"}
+                            },
+                            "required": ["candidate_id"]
+                        }
+                    }
+                }
+            },
+            "responses": {
+                "200": {
+                    "description": "Heartbeat successful",
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "properties": {
+                                    "status": {"type": "string"},
+                                    "time_remaining": {"type": "integer"},
+                                    "should_submit": {"type": "boolean"}
+                                }
+                            }
+                        }
+                    }
+                },
+                "404": {
+                    "description": "Assessment not found or not started"
+                },
+                "410": {
+                    "description": "Assessment time has expired"
+                }
+            }
+        }
+    }
+)
+
 # Reports endpoints
 spec.path(
     path="/api/reports",
