@@ -220,7 +220,7 @@ def create_solution():
         "solution_id": solution_id
     }), 201
 
-
+# analysis
 @app.route("/api/analysis/<solution_id>", methods=["GET"])
 def get_analysis(solution_id):
     """Get analysis for a specific solution."""
@@ -311,7 +311,7 @@ def analyze_all():
         "job_id": job_id
     })
 
-
+# analysis jobs
 @app.route("/api/analysis/jobs", methods=["GET"])
 def get_analysis_jobs():
     """Get all analysis jobs."""
@@ -812,7 +812,7 @@ def test_code(test_id):
             "error": str(e)
         }), 500
 
-
+# reports
 @app.route("/api/reports", methods=["GET"])
 def get_reports():
     """Get all reports."""
@@ -845,8 +845,9 @@ def generate_report(test_id):
     assessment = db_service.get_assessment_by_id(test_id)
     if not assessment:
         return jsonify({"message": "Assessment not found"}), 404
+    top_candidates = request.args.get("top_candidates", 10)
 
-    report_id = reporting_service.generate_test_report(test_id)
+    report_id = reporting_service.generate_test_report(test_id, top_candidates)
 
     if not report_id:
         return jsonify({"message": "Failed to generate report"}), 500
