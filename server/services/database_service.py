@@ -459,7 +459,7 @@ class DatabaseService:
             Report document or None if not found
         """
         collection = self.get_collection(self.reports_collection)
-        report = collection.find_one({"test_id": test_id})
+        report = collection.find_one({"test_id": test_id},sort=[("generated_at", -1)])
         if report and "_id" in report:
             report["_id"] = str(report["_id"])
         return report
