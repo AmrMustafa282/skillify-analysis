@@ -105,13 +105,46 @@ class DatabaseService:
             Assessment document or None if not found
         """
         collection = self.get_collection(self.assessments_collection)
+
         assessment = collection.find_one({"testId": test_id})
+
+        # Remove `correctAnswer` from questions
+        for question in assessment.get("questions", []):
+            question.pop("correctAnswer", None)
+
+        # Remove sensitive fields from codingQuestions
+        for coding in assessment.get("codingQuestions", []):
+            coding.pop("solutionCode", None)
 
         # Convert ObjectId to string for JSON serialization
         if assessment and "_id" in assessment:
             assessment["_id"] = str(assessment["_id"])
 
         return assessment
+
+    def get_code_question_by_q_id(self, test_id: str, question_id: str) -> Optional[Dict]:
+        """Get an assessment by ID.
+
+        Args:
+            test_id: Assessment ID
+
+        Returns:
+            Assessment document or None if not found
+        """
+        collection = self.get_collection(self.assessments_collection)
+        assessment = collection.find_one({"testId": test_id})
+
+        if not assessment:
+            return None
+
+        for coding in assessment.get("codingQuestions", []):
+            if coding.get("order") == int(question_id):
+                # Make a shallow copy so the original DB data isn't affected
+                sanitized_question = coding.copy()
+                sanitized_question.pop("solutionCode", None)
+                return sanitized_question
+
+        return None
 
     def get_all_assessments(self) -> List[Dict]:
         """Get all assessments.

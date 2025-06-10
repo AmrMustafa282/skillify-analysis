@@ -113,6 +113,19 @@ def get_assessment(test_id):
 
     return jsonify(assessment)
 
+
+@app.route("/api/assessments/<test_id>/code/<code_id>", methods=["GET"])
+def get_assessment_code_question(test_id, code_id):
+    """Get a specific assessment."""
+    code_question = db_service.get_code_question_by_q_id(test_id, code_id)
+
+    if not code_question:
+        return jsonify({"message": "code_question not found"}), 404
+
+    return jsonify(code_question)
+
+
+
 @app.route("/api/assessments", methods=["POST"])
 def create_assessment():
     """Create a new assessment."""
