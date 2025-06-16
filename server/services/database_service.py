@@ -95,7 +95,7 @@ class DatabaseService:
 
     # Assessment operations
 
-    def get_assessment_by_id(self, test_id: str) -> Optional[Dict]:
+    def get_assessment_by_id(self, test_id: str, include_sensitive_info: bool = True) -> Optional[Dict]:
         """Get an assessment by ID.
 
         Args:
@@ -107,14 +107,18 @@ class DatabaseService:
         collection = self.get_collection(self.assessments_collection)
 
         assessment = collection.find_one({"testId": test_id})
+        if not assessment:
+            return None
 
         # Remove `correctAnswer` from questions
-        for question in assessment.get("questions", []):
-            question.pop("correctAnswer", None)
+        if not include_sensitive_info:
+           for question in assessment.get("questions", []):
+               question.pop("correctAnswer", None)
 
-        # Remove sensitive fields from codingQuestions
-        for coding in assessment.get("codingQuestions", []):
-            coding.pop("solutionCode", None)
+        # # Remove sensitive fields from codingQuestions
+        if not include_sensitive_info:
+           for coding in assessment.get("codingQuestions", []):
+               coding.pop("solutionCode", None)
 
         # Convert ObjectId to string for JSON serialization
         if assessment and "_id" in assessment:

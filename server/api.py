@@ -106,7 +106,7 @@ def get_assessments():
 @app.route("/api/assessments/<test_id>", methods=["GET"])
 def get_assessment(test_id):
     """Get a specific assessment."""
-    assessment = db_service.get_assessment_by_id(test_id)
+    assessment = db_service.get_assessment_by_id(test_id, include_sensitive_info=False)
 
     if not assessment:
         return jsonify({"message": "Assessment not found"}), 404
@@ -153,7 +153,7 @@ def create_assessment():
         "assessment_id": assessment_id
     }), 201
 
-@app.route("/api/assessments/<test_id>", methods=["PUT"])
+@app.route("/api/assessments/<test_id>", methods=["PATCH"])
 def update_assessment(test_id):
     """Update an existing assessment."""
     data = request.get_json()
@@ -171,6 +171,32 @@ def update_assessment(test_id):
 
     return jsonify({
         "message": "Assessment updated successfully"
+    })
+
+@app.route("/api/assessments/<test_id>/code", methods=["POST"])
+def add_code_question(test_id):
+    """Add a code question to an assessment."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"message": "No data provided"}), 400
+
+    existing = db_service.get_assessment_by_id(test_id)
+    if not existing:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    # if "order" not in data:
+    #     return jsonify({"message": "order is required"}), 400
+
+    existing_questions = existing.get("codingQuestions", [])
+
+    data["order"] = len(existing_questions) + 1
+
+    db_service.update_assessment(test_id, {"codingQuestions": existing_questions + [data]})
+
+    return jsonify({
+        "success": True,
+        "message": "Code question added successfully"
     })
 
 @app.route("/api/assessments/<test_id>", methods=["DELETE"])
