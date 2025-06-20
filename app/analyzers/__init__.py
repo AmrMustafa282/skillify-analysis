@@ -1,3 +1,0 @@
-"""
-Analyzers package.
-"""
