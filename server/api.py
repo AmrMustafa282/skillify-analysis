@@ -72,6 +72,7 @@ def health_check():
     """Health check endpoint."""
     return jsonify({
         "status": "ok",
+        "success": True,
         "timestamp": datetime.now().isoformat(),
         "version": "1.0.0"
     })
@@ -93,6 +94,7 @@ def login():
 
     return jsonify({
         "token": token,
+        "success": True,
         "expires_in": app.config["JWT_EXPIRATION_DELTA"]
     })
 
@@ -124,6 +126,15 @@ def get_assessment_code_question(test_id, code_id):
 
     return jsonify(code_question)
 
+@app.route("/api/assessments/<test_id>/code/<code_id>/full", methods=["GET"])
+def get_assessment_code_question_full(test_id, code_id):
+    """Get a specific assessment."""
+    code_question = db_service.get_code_question_by_q_id(test_id, code_id, include_sensitive_info=True)
+
+    if not code_question:
+        return jsonify({"message": "code_question not found"}), 404
+
+    return jsonify(code_question)
 
 
 @app.route("/api/assessments", methods=["POST"])
@@ -150,6 +161,7 @@ def create_assessment():
 
     return jsonify({
         "message": "Assessment created successfully",
+        "success": True,
         "assessment_id": assessment_id
     }), 201
 
@@ -199,6 +211,63 @@ def add_code_question(test_id):
         "message": "Code question added successfully"
     })
 
+@app.route("/api/assessments/<test_id>/code/<code_order>", methods=["PATCH"])
+def update_code_question(test_id, code_order):
+    """Update a code question in an assessment."""
+    data = request.get_json()
+
+    if not data:
+        return jsonify({"message": "No data provided"}), 400
+
+    existing = db_service.get_assessment_by_id(test_id)
+    if not existing:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    existing_questions = existing.get("codingQuestions", [])
+    updated = False
+
+    for i, question in enumerate(existing_questions):
+        if question["order"] == int(code_order):
+            existing_questions[i] = data
+            updated = True
+            break
+
+    if not updated:
+        return jsonify({"message": "Code question with the specified order not found"}), 404
+
+    db_service.update_assessment(test_id, {"codingQuestions": existing_questions})
+
+    return jsonify({
+        "success": True,
+        "message": "Code question updated successfully"
+    })
+
+@app.route("/api/assessments/<test_id>/code/<code_order>", methods=["DELETE"])
+def delete_code_question(test_id, code_order):
+    """Delete a code question from an assessment by its order."""
+
+    existing = db_service.get_assessment_by_id(test_id)
+    if not existing:
+        return jsonify({"message": "Assessment not found"}), 404
+
+    existing_questions = existing.get("codingQuestions", [])
+    original_length = len(existing_questions)
+
+    # Filter out the question with the given order
+    updated_questions = [
+        question for question in existing_questions if question["order"] != int(code_order)
+    ]
+
+    if len(updated_questions) == original_length:
+        return jsonify({"message": "Code question with the specified order not found"}), 404
+
+    db_service.update_assessment(test_id, {"codingQuestions": updated_questions})
+
+    return jsonify({
+        "success": True,
+        "message": "Code question deleted successfully"
+    })
+
 @app.route("/api/assessments/<test_id>", methods=["DELETE"])
 def delete_assessment(test_id):
     """Delete an assessment."""
@@ -209,6 +278,7 @@ def delete_assessment(test_id):
     db_service.delete_assessment(test_id)
 
     return jsonify({
+      "success": True,
         "message": "Assessment deleted successfully"
     })
 
@@ -256,6 +326,7 @@ def create_solution():
 
     return jsonify({
         "message": "Solution created successfully",
+        "success": True,
         "solution_id": solution_id
     }), 201
 
@@ -299,7 +370,8 @@ def analyze_solution(solution_id):
 
     return jsonify({
         "message": "Solution analysis started",
-        "job_id": job_id
+        "job_id": job_id,
+        "success": True,
     })
 
 @app.route("/api/analyze/test/<test_id>", methods=["POST"])
@@ -328,6 +400,7 @@ def analyze_test(test_id):
 
     return jsonify({
         "message": "Test analysis started",
+        "success": True,
         "job_id": job_id
     })
 
@@ -347,6 +420,7 @@ def analyze_all():
 
     return jsonify({
         "message": "Analysis of all unprocessed solutions started",
+        "success": True,
         "job_id": job_id
     })
 
@@ -415,6 +489,7 @@ def start_assessment(test_id):
 
     return jsonify({
         "message": "Assessment started successfully",
+        "success": True,
         "solution_id": solution_id,
         "started_at": solution["started_at"]
     })
@@ -467,6 +542,7 @@ def submit_coding_answer(test_id):
     db_service.update_solution(solution_id, solution)
     return jsonify({
         "message": "Coding answer submitted successfully",
+        "success": True,
         "solution_id": solution_id,
         "question_id": question_id,
         "coding_answer": new_coding_answer
@@ -523,6 +599,7 @@ def complete_assessment(test_id):
     db_service.update_solution(solution["solution_id"], solution)
     return jsonify({
         "message": "Assessment completed successfully",
+        "success": True,
         "solution_id": solution["solution_id"],
         "completed_at": solution["completed_at"],
         "time_taken": time_taken,
@@ -592,6 +669,7 @@ def get_assessment_status(test_id):
     return jsonify({
         "status": "in_progress",
         "message": "Assessment in progress",
+        "success": True,
         "solution_id": solution["solution_id"],
         "started_at": solution["started_at"],
         "time_remaining": time_remaining,
@@ -646,6 +724,7 @@ def save_progress(test_id):
 
     return jsonify({
         "message": "Progress saved successfully",
+        "success": True,
         "last_saved": progress_data["last_activity"]
     })
 
@@ -696,6 +775,7 @@ def assessment_heartbeat(test_id):
 
     return jsonify({
         "status": "active",
+        "success": True,
         "message": "Session active",
         "time_remaining": time_remaining,
     })
@@ -746,6 +826,7 @@ def validate_session(test_id):
 
     return jsonify({
         "valid": True,
+        "success": True,
         "message": "Session validated successfully",
         "session_id": session_id
     })
@@ -788,6 +869,7 @@ def auto_submit_assessment(test_id):
 
     return jsonify({
         "message": "Assessment auto-submitted successfully",
+        "success": True,
         "solution_id": solution["solution_id"],
         "completed_at": solution["completed_at"],
         "time_taken": time_taken,
@@ -893,6 +975,7 @@ def generate_report(test_id):
 
     return jsonify({
         "message": "Report generated successfully",
+        "success": True,
         "report_id": report_id
     })
 
@@ -909,6 +992,7 @@ def generate_all_reports():
 
     return jsonify({
         "message": f"Generated {len(report_ids)} reports",
+        "success": True,
         "report_ids": report_ids
     })
 

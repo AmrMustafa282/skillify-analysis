@@ -126,7 +126,7 @@ class DatabaseService:
 
         return assessment
 
-    def get_code_question_by_q_id(self, test_id: str, question_id: str) -> Optional[Dict]:
+    def get_code_question_by_q_id(self, test_id: str, question_id: str, include_sensitive_info: bool = False) -> Optional[Dict]:
         """Get an assessment by ID.
 
         Args:
@@ -145,7 +145,8 @@ class DatabaseService:
             if coding.get("order") == int(question_id):
                 # Make a shallow copy so the original DB data isn't affected
                 sanitized_question = coding.copy()
-                sanitized_question.pop("solutionCode", None)
+                if not include_sensitive_info:
+                   sanitized_question.pop("solutionCode", None)
                 return sanitized_question
 
         return None
