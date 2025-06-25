@@ -282,6 +282,171 @@ def delete_assessment(test_id):
         "message": "Assessment deleted successfully"
     })
 
+# Predefined Questions API
+@app.route("/api/predefined-questions", methods=["GET"])
+def get_predefined_questions():
+    """Get all predefined questions from MongoDB."""
+    try:
+        # Get query parameters for filtering
+        topic = request.args.get("topic")
+        difficulty = request.args.get("difficulty")
+        language = request.args.get("language")
+        limit = request.args.get("limit", type=int)
+        offset = request.args.get("offset", type=int, default=0)
+
+        # Build filter criteria
+        filter_criteria = {}
+        if topic:
+            filter_criteria["metadata.topic"] = topic
+        if difficulty:
+            filter_criteria["metadata.difficulty"] = difficulty.upper()
+
+        # Get questions from database
+        questions = db_service.get_predefined_questions(
+            filter_criteria=filter_criteria,
+            limit=limit,
+            offset=offset
+        )
+
+        # If language is specified, filter implementations
+        if language and questions:
+            for question in questions:
+                if "implementations" in question:
+                    question["implementations"] = [
+                        impl for impl in question["implementations"]
+                        if impl["language"] == language
+                    ]
+
+        # Get total count for pagination
+        total_count = db_service.count_predefined_questions(filter_criteria)
+
+        return jsonify({
+            "success": True,
+            "questions": questions,
+            "total": total_count,
+            "offset": offset,
+            "limit": limit,
+            "has_more": (offset + len(questions)) < total_count if limit else False
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching predefined questions: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching predefined questions: {str(e)}"
+        }), 500
+
+@app.route("/api/predefined-questions/<question_id>", methods=["GET"])
+def get_predefined_question(question_id):
+    """Get a specific predefined question by ID."""
+    try:
+        language = request.args.get("language")
+
+        question = db_service.get_predefined_question_by_id(question_id)
+
+        if not question:
+            return jsonify({
+                "success": False,
+                "message": "Question not found"
+            }), 404
+
+        # If language is specified, filter implementations
+        if language and "implementations" in question:
+            question["implementations"] = [
+                impl for impl in question["implementations"]
+                if impl["language"] == language
+            ]
+
+            if not question["implementations"]:
+                return jsonify({
+                    "success": False,
+                    "message": f"Question not available in {language}"
+                }), 404
+
+        return jsonify({
+            "success": True,
+            "question": question
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching predefined question {question_id}: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching question: {str(e)}"
+        }), 500
+
+@app.route("/api/predefined-questions/topics", methods=["GET"])
+def get_predefined_question_topics():
+    """Get all available topics for predefined questions."""
+    try:
+        topics = db_service.get_predefined_question_topics()
+
+        return jsonify({
+            "success": True,
+            "topics": topics
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching topics: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching topics: {str(e)}"
+        }), 500
+
+@app.route("/api/predefined-questions/languages", methods=["GET"])
+def get_predefined_question_languages():
+    """Get all available programming languages for predefined questions."""
+    try:
+        languages = db_service.get_predefined_question_languages()
+
+        return jsonify({
+            "success": True,
+            "languages": languages
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching languages: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching languages: {str(e)}"
+        }), 500
+
+@app.route("/api/predefined-questions/companies", methods=["GET"])
+def get_predefined_question_companies():
+    """Get all available companies for predefined questions."""
+    try:
+        companies = db_service.get_predefined_question_companies()
+
+        return jsonify({
+            "success": True,
+            "companies": companies
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching companies: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching companies: {str(e)}"
+        }), 500
+
+@app.route("/api/predefined-questions/difficulties", methods=["GET"])
+def get_predefined_question_difficulties():
+    """Get all available difficulty levels for predefined questions."""
+    try:
+        difficulties = db_service.get_predefined_question_difficulties()
+
+        return jsonify({
+            "success": True,
+            "difficulties": difficulties
+        })
+
+    except Exception as e:
+        logger.error(f"Error fetching difficulties: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Error fetching difficulties: {str(e)}"
+        }), 500
+
 
 @app.route("/api/solutions", methods=["GET"])
 def get_solutions():
@@ -1001,8 +1166,57 @@ def swagger_json():
     """Return the Swagger specification as JSON."""
     return jsonify(spec.to_dict())
 
+@app.route("/api/test-predefined-question", methods=["POST"])
+def test_predefined_question():
+    """Test a predefined question with code execution."""
+    data = request.get_json()
+
+    required_fields = ["question_id", "code", "language"]
+    for field in required_fields:
+        if field not in data:
+            return jsonify({"message": f"Missing required field: {field}"}), 400
+
+    question_id = data["question_id"]
+    code = data["code"]
+    language = data["language"]
+
+    try:
+        from server.utils.predefined_questions_converter import (
+            get_predefined_question_by_id,
+            convert_test_cases_for_language
+        )
+        from server.services.code_execution_service import CodeExecutionService
+
+        # Get the predefined question
+        question = get_predefined_question_by_id(question_id)
+        if not question:
+            return jsonify({"message": f"Question not found: {question_id}"}), 404
+
+        # Convert test cases for the specific language
+        test_cases = convert_test_cases_for_language(question["testCases"], language)
+
+        # Execute the code
+        code_executor = CodeExecutionService()
+        results = code_executor.execute_code(
+            code=code,
+            language=language,
+            test_cases=test_cases,
+        )
+
+        return jsonify({
+            "message": "Code tested successfully",
+            "results": results,
+            "question_id": question_id,
+            "language": language,
+            "question_title": question["title"]
+        })
+
+    except Exception as e:
+        logger.error(f"Error testing predefined question: {e}")
+        return jsonify({"message": f"Error testing code: {str(e)}"}), 500
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 5002))
+    port = int(os.getenv("PORT", 5000))
     debug = os.getenv("DEBUG", "False").lower() == "true"
 
     app.run(host="0.0.0.0", port=port, debug=debug)
