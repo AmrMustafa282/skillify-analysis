@@ -111,6 +111,22 @@ class CodeExecutionService:
         Returns:
             Dictionary with success status and test results
         """
+        # Validate that we have actual code to execute
+        if not code or code.strip() == "":
+            return {
+                "success": False,
+                "error": "No code provided for execution",
+                "test_results": []
+            }
+
+        # Check if code is just starter code (contains only comments and function signature)
+        if self._is_starter_code_only(code, language):
+            return {
+                "success": False,
+                "error": "Code appears to contain only starter template without implementation",
+                "test_results": []
+            }
+
         test_results = self.execute_code(code, language, test_cases, timeout)
 
         # Check if there was an error
@@ -137,6 +153,73 @@ class CodeExecutionService:
                 "total_memory_usage": sum(result.get("memory_usage", 0) for result in test_results)
             }
         }
+
+    def _is_starter_code_only(self, code: str, language: str) -> bool:
+        """Check if the code contains only starter template without actual implementation.
+
+        Args:
+            code: The code to check
+            language: The programming language
+
+        Returns:
+            True if code appears to be only starter template
+        """
+        # Remove comments and whitespace
+        lines = code.strip().split('\n')
+        non_comment_lines = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Skip comment lines based on language
+            if language == "python" and line.startswith('#'):
+                continue
+            elif language == "javascript" and (line.startswith('//') or line.startswith('/*') or line.startswith('*')):
+                continue
+            elif language == "java" and (line.startswith('//') or line.startswith('/*') or line.startswith('*')):
+                continue
+            elif language in ["cpp", "c++"] and (line.startswith('//') or line.startswith('/*') or line.startswith('*')):
+                continue
+            elif language == "go" and line.startswith('//'):
+                continue
+            elif language == "ruby" and line.startswith('#'):
+                continue
+
+            non_comment_lines.append(line)
+
+        # Check if we only have function signatures and placeholder comments
+        code_content = '\n'.join(non_comment_lines)
+
+        # Common patterns that indicate starter code
+        starter_patterns = [
+            "// Your code here",
+            "# Your code here",
+            "/* Your code here */",
+            "// TODO:",
+            "# TODO:",
+            "pass",  # Python placeholder
+            "return null;",  # JavaScript placeholder
+            "return 0;",  # C++ placeholder
+            "return nil",  # Go placeholder
+        ]
+
+        # If the code contains only function signatures and placeholders
+        has_implementation = False
+        for line in non_comment_lines:
+            # Skip function signatures, class declarations, imports, etc.
+            if any(keyword in line for keyword in ['def ', 'function ', 'class ', 'public ', 'private ', 'import ', 'package ', 'func ', 'var ', 'const ']):
+                continue
+            if line in ['{', '}', '(', ')', ';']:
+                continue
+            if any(pattern in line for pattern in starter_patterns):
+                continue
+            if line.strip():
+                has_implementation = True
+                break
+
+        return not has_implementation
 
     def execute_code(self, code: str, language: str, test_cases: List[Dict],
                      timeout: int = DEFAULT_TIMEOUT) -> List[Dict]:
@@ -307,6 +390,8 @@ spec.loader.exec_module(solution)
 solution_functions = {{name: func for name, func in solution.__dict__.items()
                      if callable(func) and not name.startswith('__')}}
 
+print(f"Found {{len(solution_functions)}} functions: {{list(solution_functions.keys())}}")
+
 results = []
 
 for i, test_case in enumerate(test_cases):
@@ -315,25 +400,44 @@ for i, test_case in enumerate(test_cases):
     expected_output = test_case.get("expected_output", "")
     function_name = test_case.get("function_name", "")
 
+    print(f"Running test {{test_id}} with input: {{input_value}}, expected output: {{expected_output}}")
+
     # Find the function to test
     func = None
+    func_name = None
+
+    # Common function names to look for
+    common_functions = ['reverse_string', 'reverseString', 'two_sum', 'twoSum', 'is_valid', 'isValid',
+                       'is_palindrome', 'isPalindrome', 'max_sub_array', 'maxSubArray', 'merge',
+                       'climb_stairs', 'climbStairs', 'rob', 'coin_change', 'coinChange',
+                       'length_of_lis', 'lengthOfLIS']
+
     if function_name and function_name in solution_functions:
         func = solution_functions[function_name]
+        func_name = function_name
+        print(f"Using specified function: {{function_name}}")
     elif len(solution_functions) == 1:
         # If only one function, use that
         func = next(iter(solution_functions.values()))
+        func_name = next(iter(solution_functions.keys()))
+        print(f"Using the only available function: {{func_name}}")
     else:
-        # Try to find a function with a name that matches the test case
-        for name, fn in solution_functions.items():
-            if name.lower() in test_case.get("description", "").lower():
-                func = fn
+        # Try to find a function by common names
+        for name in common_functions:
+            if name in solution_functions:
+                func = solution_functions[name]
+                func_name = name
+                print(f"Found function by common name: {{name}}")
                 break
         else:
             # Default to the first function
             if solution_functions:
                 func = next(iter(solution_functions.values()))
+                func_name = next(iter(solution_functions.keys()))
+                print(f"Defaulting to first function: {{func_name}}")
 
     if not func:
+        print("No suitable function found")
         results.append({{
             "test_case_id": test_id,
             "passed": False,
@@ -352,8 +456,11 @@ for i, test_case in enumerate(test_cases):
 
         # Handle different input formats
         if isinstance(input_value, str):
+            print(f"Processing string input: {{input_value}}")
+
             # Check if input contains comma-separated values (like "[2,7,11,15], 9")
-            if ',' in input_value and not (input_value.startswith('[') and input_value.endswith(']')):
+            if ',' in input_value and '[' in input_value and not (input_value.startswith('[') and input_value.endswith(']')):
+                print("Detected multi-argument input format")
                 # Split by comma and parse each part
                 parts = []
                 current_part = ""
@@ -375,79 +482,98 @@ for i, test_case in enumerate(test_cases):
                 if current_part.strip():
                     parts.append(current_part.strip())
 
+                print(f"Split into parts: {{parts}}")
+
                 # Parse each part
                 parsed_args = []
                 for part in parts:
                     if part.startswith('[') and part.endswith(']'):
                         try:
                             parsed_args.append(json.loads(part))
+                            print(f"Parsed array part: {{part}}")
                         except json.JSONDecodeError:
                             parsed_args.append(part)
+                            print(f"Failed to parse array, keeping as string: {{part}}")
                     else:
                         # Try to parse as number, boolean, or keep as string
                         try:
                             # Try integer first
                             parsed_args.append(int(part))
+                            print(f"Parsed as int: {{part}}")
                         except ValueError:
                             try:
                                 # Try float
                                 parsed_args.append(float(part))
+                                print(f"Parsed as float: {{part}}")
                             except ValueError:
                                 # Try boolean
                                 if part.lower() in ['true', 'false']:
                                     parsed_args.append(part.lower() == 'true')
+                                    print(f"Parsed as boolean: {{part}}")
                                 else:
                                     # Keep as string, remove quotes if present
                                     if part.startswith('"') and part.endswith('"'):
                                         parsed_args.append(part[1:-1])
+                                        print(f"Parsed as quoted string: {{part}}")
                                     else:
                                         parsed_args.append(part)
+                                        print(f"Keeping as string: {{part}}")
 
                 parsed_input = parsed_args
             elif input_value.startswith('[') and input_value.endswith(']'):
                 # Single JSON array
                 try:
                     parsed_input = json.loads(input_value)
+                    print(f"Parsed as JSON array: {{parsed_input}}")
                 except json.JSONDecodeError:
                     parsed_input = input_value
+                    print(f"Failed to parse as JSON, keeping as string: {{input_value}}")
             else:
-                # Single value
-                parsed_input = input_value
+                # Single value - try to parse as JSON first, then as string
+                try:
+                    parsed_input = json.loads(input_value)
+                    print(f"Parsed as JSON: {{parsed_input}}")
+                except json.JSONDecodeError:
+                    parsed_input = input_value
+                    print(f"Keeping as string: {{input_value}}")
         else:
             parsed_input = input_value
+            print(f"Non-string input: {{parsed_input}}")
 
         # Execute the function
         start_time = time.time()
+        print(f"Executing function {{func_name}} with {{num_params}} parameters")
 
         # Determine how to call the function based on parsed input and function signature
-        if isinstance(parsed_input, list) and not isinstance(input_value, list):
-            # We parsed multiple arguments from a string
-            if len(parsed_input) == num_params:
-                # Number of parsed arguments matches function parameters
-                result = func(*parsed_input)
-            elif num_params == 1:
-                # Function expects one argument, pass the list as a single argument
-                result = func(parsed_input)
-            else:
-                # Try to pass as separate arguments anyway
-                result = func(*parsed_input)
+        if isinstance(parsed_input, list) and ',' in input_value and '[' in input_value and not input_value.startswith('['):
+            # We parsed multiple arguments from a string (like "[2,7,11,15], 9")
+            print(f"Calling function with multiple arguments: {{parsed_input}}")
+            result = func(*parsed_input)
         elif isinstance(parsed_input, list) and num_params == 1:
             # Single list argument for a function that expects one parameter
+            print(f"Calling function with single list argument: {{parsed_input}}")
             result = func(parsed_input)
-        elif isinstance(parsed_input, list):
+        elif isinstance(parsed_input, list) and len(parsed_input) == num_params:
             # Multiple arguments from a list
+            print(f"Calling function with unpacked list arguments: {{parsed_input}}")
             result = func(*parsed_input)
         else:
             # Single argument
+            print(f"Calling function with single argument: {{parsed_input}}")
             result = func(parsed_input)
 
         end_time = time.time()
         execution_time = (end_time - start_time) * 1000  # Convert to ms
 
+        print(f"Function returned: {{result}} (type: {{type(result)}})")
+
         # Convert result to string for comparison
         if isinstance(result, list):
             # For lists, use JSON format without spaces for consistent comparison
             actual_output = json.dumps(result, separators=(',', ':'))
+        elif isinstance(result, bool):
+            # For booleans, use lowercase string representation
+            actual_output = str(result).lower()
         else:
             actual_output = str(result)
 
@@ -460,11 +586,15 @@ for i, test_case in enumerate(test_cases):
                 expected_normalized = json.dumps(expected_parsed, separators=(',', ':'))
             except json.JSONDecodeError:
                 expected_normalized = expected_str
+        elif expected_str.lower() in ['true', 'false']:
+            # Normalize boolean expected output
+            expected_normalized = expected_str.lower()
         else:
             expected_normalized = expected_str
 
         # Check if the output matches the expected output
         passed = actual_output.strip() == expected_normalized.strip()
+        print(f"Test {{passed and 'PASSED' or 'FAILED'}}: actual='{{actual_output}}', expected='{{expected_normalized}}'")
 
         results.append({{
             "test_case_id": test_id,
@@ -511,25 +641,40 @@ with open('results.json', 'w') as f:
         # Create a more robust JavaScript test runner script
         js_test_runner = f"""
 const fs = require('fs');
-let solution;
 
-// Try to load the solution module
+// Try to load the solution code by evaluating it
+let solutionCode;
 try {{
-    solution = require(`./{code_file_name}`);
-    console.log('Successfully loaded solution module');
+    solutionCode = fs.readFileSync('./{code_file_name}', 'utf8');
+    console.log('Successfully loaded solution code');
 }} catch (e) {{
-    console.error('Error loading solution module:', e);
-
-    // Create a dummy results file with the error
+    console.error('Error loading solution code:', e);
     const errorResults = [{{
         test_case_id: "error",
         passed: false,
         actual_output: "",
         expected_output: "",
         execution_time: 0.0,
-        error_message: `Error loading solution module: ${{e.toString()}}`
+        error_message: `Error loading solution code: ${{e.toString()}}`
     }}];
+    fs.writeFileSync('./results.json', JSON.stringify(errorResults, null, 2));
+    process.exit(1);
+}}
 
+// Evaluate the solution code in the global context
+try {{
+    eval(solutionCode);
+    console.log('Successfully evaluated solution code');
+}} catch (e) {{
+    console.error('Error evaluating solution code:', e);
+    const errorResults = [{{
+        test_case_id: "error",
+        passed: false,
+        actual_output: "",
+        expected_output: "",
+        execution_time: 0.0,
+        error_message: `Error evaluating solution code: ${{e.toString()}}`
+    }}];
     fs.writeFileSync('./results.json', JSON.stringify(errorResults, null, 2));
     process.exit(1);
 }}
@@ -542,8 +687,6 @@ try {{
     console.log(`Loaded ${{testCases.length}} test cases`);
 }} catch (e) {{
     console.error('Error loading test cases:', e);
-
-    // Create a dummy results file with the error
     const errorResults = [{{
         test_case_id: "error",
         passed: false,
@@ -552,16 +695,20 @@ try {{
         execution_time: 0.0,
         error_message: `Error loading test cases: ${{e.toString()}}`
     }}];
-
     fs.writeFileSync('./results.json', JSON.stringify(errorResults, null, 2));
     process.exit(1);
 }}
 
-// Get all exported functions from the solution
-const solutionFunctions = Object.keys(solution)
-    .filter(key => typeof solution[key] === 'function');
+// Find available functions in global scope
+const availableFunctions = [];
+const functionNames = ['reverseString', 'twoSum', 'isValid', 'isPalindrome', 'maxSubArray', 'merge', 'climbStairs', 'rob', 'coinChange', 'lengthOfLIS'];
+for (const name of functionNames) {{
+    if (typeof global[name] === 'function' || typeof this[name] === 'function' || typeof eval(name) === 'function') {{
+        availableFunctions.push(name);
+    }}
+}}
 
-console.log(`Found ${{solutionFunctions.length}} functions in solution: ${{solutionFunctions.join(', ')}}`);
+console.log(`Found ${{availableFunctions.length}} functions: ${{availableFunctions.join(', ')}}`);
 
 const results = [];
 
@@ -570,31 +717,23 @@ for (let i = 0; i < testCases.length; i++) {{
     const testId = `test_${{i}}`;
     const inputValue = testCase.input || "";
     const expectedOutput = testCase.expected_output || "";
-    const functionName = testCase.function_name || "";
 
     console.log(`Running test ${{testId}} with input: ${{inputValue}}, expected output: ${{expectedOutput}}`);
 
     // Find the function to test
-    let func;
-    if (functionName && solution[functionName]) {{
-        func = solution[functionName];
-        console.log(`Using function ${{functionName}} specified in test case`);
-    }} else if (solutionFunctions.length === 1) {{
-        // If only one function, use that
-        func = solution[solutionFunctions[0]];
-        console.log(`Using the only available function: ${{solutionFunctions[0]}}`);
-    }} else {{
-        // Try to find a function with a name that matches the test case
-        const matchingFunc = solutionFunctions.find(name =>
-            testCase.description && testCase.description.toLowerCase().includes(name.toLowerCase()));
+    let func = null;
+    let funcName = null;
 
-        if (matchingFunc) {{
-            func = solution[matchingFunc];
-            console.log(`Found matching function: ${{matchingFunc}}`);
-        }} else if (solutionFunctions.length > 0) {{
-            // Default to the first function
-            func = solution[solutionFunctions[0]];
-            console.log(`Defaulting to first function: ${{solutionFunctions[0]}}`);
+    // Try to find the function by name
+    for (const name of availableFunctions) {{
+        try {{
+            func = eval(name);
+            if (typeof func === 'function') {{
+                funcName = name;
+                break;
+            }}
+        }} catch (e) {{
+            // Continue to next function
         }}
     }}
 
@@ -611,38 +750,53 @@ for (let i = 0; i < testCases.length; i++) {{
         continue;
     }}
 
+    console.log(`Using function: ${{funcName}}`);
+
     try {{
         // Parse input based on type
         let parsedInput = inputValue;
-        if (typeof inputValue === 'string' && inputValue.startsWith('[') && inputValue.endsWith(']')) {{
-            try {{
-                parsedInput = JSON.parse(inputValue);
-                console.log(`Parsed input as array: ${{JSON.stringify(parsedInput)}}`);
-            }} catch (e) {{
-                console.log(`Failed to parse input as array, using as string: ${{e.message}}`);
-                // Keep as string if parsing fails
+
+        // Handle different input formats
+        if (typeof inputValue === 'string') {{
+            if (inputValue.startsWith('[') && inputValue.endsWith(']')) {{
+                try {{
+                    parsedInput = JSON.parse(inputValue);
+                    console.log(`Parsed input as array: ${{JSON.stringify(parsedInput)}}`);
+                }} catch (e) {{
+                    console.log(`Failed to parse input as array, using as string: ${{e.message}}`);
+                }}
+            }} else if (inputValue.includes(',') && inputValue.includes('[')) {{
+                // Handle cases like "[2,7,11,15], 9"
+                const parts = inputValue.split(',');
+                const arrayPart = parts.slice(0, -1).join(',').trim();
+                const lastPart = parts[parts.length - 1].trim();
+
+                try {{
+                    const array = JSON.parse(arrayPart);
+                    const target = parseInt(lastPart);
+                    parsedInput = [array, target];
+                    console.log(`Parsed input as array with target: ${{JSON.stringify(parsedInput)}}`);
+                }} catch (e) {{
+                    console.log(`Failed to parse complex input, using as string: ${{e.message}}`);
+                }}
             }}
         }}
 
         // Execute the function
-        console.log(`Executing function with ${{Array.isArray(parsedInput) ? 'array' : 'scalar'}} input`);
         const startTime = Date.now();
-
         let result;
-        if (Array.isArray(parsedInput)) {{
-            // Check if the function expects a single argument
-            // In JavaScript, we can check the number of parameters the function expects
-            if (func.length === 1) {{
-                console.log(`Function expects 1 parameter, passing array as single argument`);
-                // Pass the array as a single argument
-                result = func(parsedInput);
-            }} else {{
-                console.log(`Function expects multiple parameters, spreading array`);
-                // Pass each element of the array as a separate argument
-                result = func(...parsedInput);
-            }}
+
+        if (Array.isArray(parsedInput) && parsedInput.length > 1 && !inputValue.startsWith('[')) {{
+            // Multiple arguments case (like twoSum with array and target)
+            console.log(`Calling function with multiple arguments`);
+            result = func(...parsedInput);
+        }} else if (Array.isArray(parsedInput) && inputValue.startsWith('[')) {{
+            // Single array argument case (like reverseString)
+            console.log(`Calling function with single array argument`);
+            result = func(parsedInput);
         }} else {{
-            console.log(`Passing input as single argument`);
+            // Single argument case
+            console.log(`Calling function with single argument`);
             result = func(parsedInput);
         }}
 
@@ -650,12 +804,29 @@ for (let i = 0; i < testCases.length; i++) {{
         const executionTime = endTime - startTime;
 
         // Convert result to string for comparison
-        const actualOutput = String(result);
+        let actualOutput;
+        if (Array.isArray(result)) {{
+            actualOutput = JSON.stringify(result);
+        }} else {{
+            actualOutput = String(result);
+        }}
+
         console.log(`Function returned: ${{actualOutput}}`);
 
+        // Normalize expected output for comparison
+        let normalizedExpected = String(expectedOutput);
+        if (normalizedExpected.startsWith('[') && normalizedExpected.endsWith(']')) {{
+            try {{
+                const parsed = JSON.parse(normalizedExpected);
+                normalizedExpected = JSON.stringify(parsed);
+            }} catch (e) {{
+                // Keep as string if parsing fails
+            }}
+        }}
+
         // Check if the output matches the expected output
-        const passed = actualOutput.trim() === String(expectedOutput).trim();
-        console.log(`Test ${{passed ? 'PASSED' : 'FAILED'}}`);
+        const passed = actualOutput === normalizedExpected;
+        console.log(`Test ${{passed ? 'PASSED' : 'FAILED'}} (actual: ${{actualOutput}}, expected: ${{normalizedExpected}})`);
 
         results.push({{
             test_case_id: testId,
@@ -663,7 +834,7 @@ for (let i = 0; i < testCases.length; i++) {{
             actual_output: actualOutput,
             expected_output: expectedOutput,
             execution_time: executionTime,
-            memory_usage: 0.0,  // Memory profiling not implemented
+            memory_usage: 0.0,
             error_message: null
         }});
     }} catch (e) {{
@@ -1562,129 +1733,309 @@ echo "]"
                     "error_message": f"Docker execution error: {str(e)}"
                 }]
 
-        # For JavaScript, use a much simpler approach - just return dummy results without Docker
+        # For JavaScript, try to run with Docker if available, otherwise simulate
         elif language == "javascript":
-            try:
-                # Read the test cases directly
-                test_file_path = os.path.join(temp_dir, "test_cases.json")
-                with open(test_file_path, "r") as f:
-                    test_cases = json.load(f)
+            if self.docker_available:
+                try:
+                    cmd = ["node", "run_tests.js"]
 
-                # Create dummy results that pass all tests
-                results = []
-                for i, test_case in enumerate(test_cases):
-                    test_id = f"test_{i}"
-                    expected_output = test_case.get("expected_output", "")
+                    # Log the command for debugging
+                    logger.info(f"Running Docker command for {language}: {cmd}")
 
-                    results.append({
-                        "test_case_id": test_id,
-                        "passed": True,
-                        "actual_output": expected_output,
-                        "expected_output": expected_output,
+                    # Run the container
+                    run_cmd = [
+                        "docker", "run",
+                        "--name", container_name,
+                        "--memory", self.MEMORY_LIMIT,
+                        "-v", f"{os.path.abspath(temp_dir)}:/app",
+                        "-w", "/app",
+                        "--rm",
+                        docker_image,
+                        *cmd
+                    ]
+
+                    # Log the full Docker command
+                    logger.info(f"Full Docker command: {' '.join(run_cmd)}")
+
+                    # Run with a reasonable timeout
+                    actual_timeout = max(timeout, 10)
+                    result = subprocess.run(run_cmd, check=True, capture_output=True, timeout=actual_timeout, text=True)
+
+                    # Read the results
+                    results_path = os.path.join(temp_dir, "results.json")
+                    if os.path.exists(results_path):
+                        with open(results_path, "r") as f:
+                            return json.load(f)
+                    else:
+                        logger.error(f"Results file not found at {results_path}")
+                        logger.error(f"Docker stdout: {result.stdout}")
+                        logger.error(f"Docker stderr: {result.stderr}")
+                        return [{
+                            "test_case_id": "error",
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": "",
+                            "execution_time": 0.0,
+                            "error_message": f"Failed to get results from Docker container. Stdout: {result.stdout}, Stderr: {result.stderr}"
+                        }]
+                except subprocess.TimeoutExpired:
+                    logger.error(f"JavaScript Docker execution timed out after {actual_timeout} seconds")
+                    return [{
+                        "test_case_id": "timeout",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": actual_timeout * 1000,
+                        "error_message": f"Execution timed out after {actual_timeout} seconds"
+                    }]
+                except subprocess.SubprocessError as e:
+                    logger.error(f"JavaScript Docker execution error: {str(e)}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
                         "execution_time": 0.0,
-                        "memory_usage": 0.0,
-                        "error_message": None
-                    })
+                        "error_message": f"Docker execution error: {str(e)}"
+                    }]
+            else:
+                # Fallback: return failure results indicating Docker is needed
+                try:
+                    test_file_path = os.path.join(temp_dir, "test_cases.json")
+                    with open(test_file_path, "r") as f:
+                        test_cases = json.load(f)
 
-                # Write results to file for consistency
-                results_path = os.path.join(temp_dir, "results.json")
-                with open(results_path, "w") as f:
-                    json.dump(results, f)
+                    results = []
+                    for i, test_case in enumerate(test_cases):
+                        test_id = f"test_{i}"
+                        results.append({
+                            "test_case_id": test_id,
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": test_case.get("expected_output", ""),
+                            "execution_time": 0.0,
+                            "memory_usage": 0.0,
+                            "error_message": "Docker is required for JavaScript code execution but is not available"
+                        })
 
-                logger.info(f"Created dummy results for JavaScript code with {len(results)} test cases")
-                return results
+                    logger.info(f"Created failure results for JavaScript code (Docker not available)")
+                    return results
 
-            except Exception as e:
-                logger.error(f"JavaScript execution error: {str(e)}")
-                return [{
-                    "test_case_id": "error",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": 0.0,
-                    "error_message": f"JavaScript execution error: {str(e)}"
-                }]
+                except Exception as e:
+                    logger.error(f"JavaScript execution error: {str(e)}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": 0.0,
+                        "error_message": f"JavaScript execution error: {str(e)}"
+                    }]
 
-        # For Java, use a much simpler approach - just return dummy results without Docker
+        # For Java, try to run with Docker if available, otherwise simulate
         elif language == "java":
-            try:
-                # Read the test cases directly
-                test_file_path = os.path.join(temp_dir, "test_cases.json")
-                with open(test_file_path, "r") as f:
-                    test_cases = json.load(f)
+            if self.docker_available:
+                try:
+                    # For Java, we need to build first, then run
+                    cmd = ["bash", "-c", "javac -cp json-simple-1.1.1.jar *.java && java -cp .:json-simple-1.1.1.jar TestRunner"]
 
-                # Create dummy results that pass all tests
-                results = []
-                for i, test_case in enumerate(test_cases):
-                    test_id = f"test_{i}"
-                    expected_output = test_case.get("expected_output", "")
+                    # Log the command for debugging
+                    logger.info(f"Running Docker command for {language}: {cmd}")
 
-                    results.append({
-                        "test_case_id": test_id,
-                        "passed": True,
-                        "actual_output": expected_output,
-                        "expected_output": expected_output,
+                    # Run the container
+                    run_cmd = [
+                        "docker", "run",
+                        "--name", container_name,
+                        "--memory", self.MEMORY_LIMIT,
+                        "-v", f"{os.path.abspath(temp_dir)}:/app",
+                        "-w", "/app",
+                        "--rm",
+                        docker_image,
+                        *cmd
+                    ]
+
+                    # Log the full Docker command
+                    logger.info(f"Full Docker command: {' '.join(run_cmd)}")
+
+                    # Run with a reasonable timeout
+                    actual_timeout = max(timeout, 30)  # Java needs more time for compilation
+                    result = subprocess.run(run_cmd, check=True, capture_output=True, timeout=actual_timeout, text=True)
+
+                    # Read the results
+                    results_path = os.path.join(temp_dir, "results.json")
+                    if os.path.exists(results_path):
+                        with open(results_path, "r") as f:
+                            return json.load(f)
+                    else:
+                        logger.error(f"Results file not found at {results_path}")
+                        logger.error(f"Docker stdout: {result.stdout}")
+                        logger.error(f"Docker stderr: {result.stderr}")
+                        return [{
+                            "test_case_id": "error",
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": "",
+                            "execution_time": 0.0,
+                            "error_message": f"Failed to get results from Docker container. Stdout: {result.stdout}, Stderr: {result.stderr}"
+                        }]
+                except subprocess.TimeoutExpired:
+                    logger.error(f"Java Docker execution timed out after {actual_timeout} seconds")
+                    return [{
+                        "test_case_id": "timeout",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": actual_timeout * 1000,
+                        "error_message": f"Execution timed out after {actual_timeout} seconds"
+                    }]
+                except subprocess.SubprocessError as e:
+                    logger.error(f"Java Docker execution error: {str(e)}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
                         "execution_time": 0.0,
-                        "memory_usage": 0.0,
-                        "error_message": None
-                    })
+                        "error_message": f"Docker execution error: {str(e)}"
+                    }]
+            else:
+                # Fallback: return failure results indicating Docker is needed
+                try:
+                    test_file_path = os.path.join(temp_dir, "test_cases.json")
+                    with open(test_file_path, "r") as f:
+                        test_cases = json.load(f)
 
-                # Write results to file for consistency
-                results_path = os.path.join(temp_dir, "results.json")
-                with open(results_path, "w") as f:
-                    json.dump(results, f)
+                    results = []
+                    for i, test_case in enumerate(test_cases):
+                        test_id = f"test_{i}"
+                        results.append({
+                            "test_case_id": test_id,
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": test_case.get("expected_output", ""),
+                            "execution_time": 0.0,
+                            "memory_usage": 0.0,
+                            "error_message": "Docker is required for Java code execution but is not available"
+                        })
 
-                logger.info(f"Created dummy results for Java code with {len(results)} test cases")
-                return results
+                    logger.info(f"Created failure results for Java code (Docker not available)")
+                    return results
 
-            except Exception as e:
-                logger.error(f"Java execution error: {str(e)}")
-                return [{
-                    "test_case_id": "error",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": 0.0,
-                    "error_message": f"Java execution error: {str(e)}"
-                }]
+                except Exception as e:
+                    logger.error(f"Java execution error: {str(e)}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": 0.0,
+                        "error_message": f"Java execution error: {str(e)}"
+                    }]
 
-        # For Go, Ruby, and C++, use a simpler approach without Docker (like JavaScript/Java)
+        # For Go, Ruby, and C++, try Docker if available, otherwise indicate Docker is needed
         elif language in ["go", "ruby", "cpp"]:
-            try:
-                # Read the test cases directly
-                test_file_path = os.path.join(temp_dir, "test_cases.json")
-                with open(test_file_path, "r") as f:
-                    test_cases = json.load(f)
+            if self.docker_available:
+                try:
+                    cmd = []
+                    if language == "go":
+                        cmd = ["go", "run", "main.go"]
+                    elif language == "ruby":
+                        cmd = ["ruby", "run_tests.rb"]
+                    elif language == "cpp":
+                        cmd = ["bash", "build_and_run.sh"]
 
-                # Create dummy results that pass all tests (since Docker isn't available)
-                results = []
-                for i, test_case in enumerate(test_cases):
-                    test_id = f"test_{i}"
-                    expected_output = test_case.get("expected_output", "")
+                    # Log the command for debugging
+                    logger.info(f"Running Docker command for {language}: {cmd}")
 
-                    results.append({
-                        "test_case_id": test_id,
-                        "passed": True,
-                        "actual_output": expected_output,  # Simulate correct output
-                        "expected_output": expected_output,
-                        "execution_time": 50.0,  # Simulate execution time
-                        "memory_usage": 0.0,
-                        "error_message": None
-                    })
+                    # Run the container
+                    run_cmd = [
+                        "docker", "run",
+                        "--name", container_name,
+                        "--memory", self.MEMORY_LIMIT,
+                        "-v", f"{os.path.abspath(temp_dir)}:/app",
+                        "-w", "/app",
+                        "--rm",
+                        docker_image,
+                        *cmd
+                    ]
 
-                logger.info(f"Simulated {language} execution (Docker not available)")
-                return results
+                    # Log the full Docker command
+                    logger.info(f"Full Docker command: {' '.join(run_cmd)}")
 
-            except Exception as e:
-                logger.error(f"{language} execution error: {e}")
-                return [{
-                    "test_case_id": "error",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": 0.0,
-                    "error_message": f"{language} execution error: {str(e)}"
-                }]
+                    # Run with a reasonable timeout
+                    actual_timeout = max(timeout, 15)
+                    result = subprocess.run(run_cmd, check=True, capture_output=True, timeout=actual_timeout, text=True)
+
+                    # Read the results
+                    results_path = os.path.join(temp_dir, "results.json")
+                    if os.path.exists(results_path):
+                        with open(results_path, "r") as f:
+                            return json.load(f)
+                    else:
+                        logger.error(f"Results file not found at {results_path}")
+                        logger.error(f"Docker stdout: {result.stdout}")
+                        logger.error(f"Docker stderr: {result.stderr}")
+                        return [{
+                            "test_case_id": "error",
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": "",
+                            "execution_time": 0.0,
+                            "error_message": f"Failed to get results from Docker container. Stdout: {result.stdout}, Stderr: {result.stderr}"
+                        }]
+                except subprocess.TimeoutExpired:
+                    logger.error(f"{language} Docker execution timed out after {actual_timeout} seconds")
+                    return [{
+                        "test_case_id": "timeout",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": actual_timeout * 1000,
+                        "error_message": f"Execution timed out after {actual_timeout} seconds"
+                    }]
+                except subprocess.SubprocessError as e:
+                    logger.error(f"{language} Docker execution error: {str(e)}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": 0.0,
+                        "error_message": f"Docker execution error: {str(e)}"
+                    }]
+            else:
+                # Fallback: return failure results indicating Docker is needed
+                try:
+                    test_file_path = os.path.join(temp_dir, "test_cases.json")
+                    with open(test_file_path, "r") as f:
+                        test_cases = json.load(f)
+
+                    results = []
+                    for i, test_case in enumerate(test_cases):
+                        test_id = f"test_{i}"
+                        results.append({
+                            "test_case_id": test_id,
+                            "passed": False,
+                            "actual_output": "",
+                            "expected_output": test_case.get("expected_output", ""),
+                            "execution_time": 0.0,
+                            "memory_usage": 0.0,
+                            "error_message": f"Docker is required for {language} code execution but is not available"
+                        })
+
+                    logger.info(f"Created failure results for {language} code (Docker not available)")
+                    return results
+
+                except Exception as e:
+                    logger.error(f"{language} execution error: {e}")
+                    return [{
+                        "test_case_id": "error",
+                        "passed": False,
+                        "actual_output": "",
+                        "expected_output": "",
+                        "execution_time": 0.0,
+                        "error_message": f"{language} execution error: {str(e)}"
+                    }]
 
         # For other languages, use the standard approach
         else:
