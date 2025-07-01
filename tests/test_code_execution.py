@@ -17,9 +17,6 @@ def test_python_execution():
     # Create a code execution service
     service = CodeExecutionService()
 
-    # Force fallback execution
-    service.docker_available = False
-
     # Python code to test
     code = """
 def reverse_string(s):
