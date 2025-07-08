@@ -83,7 +83,7 @@ class ReportingService:
 
         return report_id
 
-    def generate_test_report(self, test_id: str) -> Dict:
+    def generate_test_report(self, test_id: str, top_candidates = 10) -> Dict:
         """Generate a report for a test.
 
         Args:
@@ -115,7 +115,7 @@ class ReportingService:
             "test_id": test_id,
             "generated_at": datetime.now().isoformat(),
             "candidate_count": len(ranked_candidates),
-            "top_candidates": ranked_candidates[:5] if len(ranked_candidates) > 5 else ranked_candidates,
+            "top_candidates": ranked_candidates[:top_candidates] if len(ranked_candidates) > top_candidates else ranked_candidates,
             "average_score": sum(candidate.get("overall_score", 0.0) for candidate in ranked_candidates) / len(ranked_candidates),
             "score_distribution": self._calculate_score_distribution(ranked_candidates),
             "coding_performance": self._analyze_coding_performance(ranked_candidates),

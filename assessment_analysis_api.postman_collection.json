@@ -367,6 +367,263 @@
    "description": "Analysis job management endpoints"
   },
   {
+   "name": "Assessment Submission",
+   "item": [
+    {
+     "name": "Start Assessment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/start",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "start"]
+      },
+      "description": "Start an assessment for a candidate"
+     },
+     "response": []
+    },
+    {
+     "name": "Submit Coding Answer",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\",\n    \"question_id\": \"52\",\n    \"code\": \"def reverse_string(s):\\n    return s[::-1]\",\n    \"language\": \"python\",\n    \"execution_time\": 0.05,\n    \"memory_usage\": 1024\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/submit/coding",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "submit", "coding"]
+      },
+      "description": "Submit a coding answer for an assessment"
+     },
+     "response": []
+    },
+    {
+     "name": "Complete Assessment",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\",\n    \"answers\": [\n        {\n            \"question_id\": \"1\",\n            \"answer_type\": \"MCQ\",\n            \"value\": \"q1_a\"\n        },\n        {\n            \"question_id\": \"2\",\n            \"answer_type\": \"MCQ\",\n            \"value\": \"q2_c\"\n        },\n        {\n            \"question_id\": \"51\",\n            \"answer_type\": \"OPEN_ENDED\",\n            \"value\": \"Lists are mutable and can be modified after creation, while tuples are immutable and cannot be changed.\"\n        }\n    ]\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/submit/complete",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "submit", "complete"]
+      },
+      "description": "Complete an assessment with all regular answers for a candidate"
+     },
+     "response": []
+    },
+    {
+     "name": "Get Candidate Solution",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/candidate/candidate-123/solution",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": [
+        "api",
+        "assessments",
+        "python-basics",
+        "candidate",
+        "candidate-123",
+        "solution"
+       ]
+      },
+      "description": "Get the current solution for a candidate in an assessment"
+     },
+     "response": []
+    },
+    {
+     "name": "Test Code",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"question_id\": \"52\",\n    \"code\": \"def reverse_string(s):\\n    return s[::-1]\",\n    \"language\": \"python\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/test-code",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "test-code"]
+      },
+      "description": "Test a coding solution using Docker containers"
+     },
+     "response": []
+    }
+   ],
+   "description": "Assessment submission endpoints"
+  },
+  {
+   "name": "Assessment State Management",
+   "item": [
+    {
+     "name": "Get Assessment Status",
+     "request": {
+      "method": "GET",
+      "header": [],
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/status?candidate_id=candidate-123",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "status"],
+       "query": [
+        {
+         "key": "candidate_id",
+         "value": "candidate-123"
+        }
+       ]
+      },
+      "description": "Get the current status of an assessment for a candidate"
+     },
+     "response": []
+    },
+    {
+     "name": "Save Progress",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\",\n    \"draft_answers\": {\n        \"1\": \"q1_a\",\n        \"2\": \"q2_b\"\n    },\n    \"current_question\": \"3\",\n    \"progress_data\": {\n        \"section\": \"mcq\",\n        \"completed_questions\": 2\n    }\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/save-progress",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "save-progress"]
+      },
+      "description": "Auto-save assessment progress including draft answers"
+     },
+     "response": []
+    },
+    {
+     "name": "Heartbeat",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/heartbeat",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "heartbeat"]
+      },
+      "description": "Keep assessment session alive and check time remaining"
+     },
+     "response": []
+    },
+    {
+     "name": "Validate Session",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\",\n    \"session_id\": \"session-abc123\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/validate-session",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "validate-session"]
+      },
+      "description": "Validate session and handle conflicts (multiple tabs)"
+     },
+     "response": []
+    },
+    {
+     "name": "Auto Submit",
+     "request": {
+      "method": "POST",
+      "header": [
+       {
+        "key": "Content-Type",
+        "value": "application/json"
+       }
+      ],
+      "body": {
+       "mode": "raw",
+       "raw": "{\n    \"candidate_id\": \"candidate-123\",\n    \"reason\": \"time_expired\"\n}"
+      },
+      "url": {
+       "raw": "http://localhost:5000/api/assessments/python-basics/auto-submit",
+       "protocol": "http",
+       "host": ["localhost"],
+       "port": "5000",
+       "path": ["api", "assessments", "python-basics", "auto-submit"]
+      },
+      "description": "Auto-submit assessment when time expires"
+     },
+     "response": []
+    }
+   ],
+   "description": "Assessment state management and session handling endpoints"
+  },
+  {
    "name": "Reports",
    "item": [
     {

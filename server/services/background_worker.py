@@ -341,10 +341,10 @@ class BackgroundWorker:
             Job status or None if not found
         """
         # Check active jobs first
-        with self.job_lock:
-            if job_id in self.active_jobs:
-                return self.active_jobs[job_id]
-
+        # with self.job_lock:
+        #     if job_id in self.active_jobs:
+        #         # return self.active_jobs[job_id]
+        #         return self.db_service.get_analysis_job(job_id)
         # Check database
         return self.db_service.get_analysis_job(job_id)
 

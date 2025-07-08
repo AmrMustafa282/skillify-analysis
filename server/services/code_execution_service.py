@@ -1,6 +1,3 @@
-"""
-Service for executing code in a secure Docker environment.
-"""
 import os
 import re
 import json
@@ -11,67 +8,52 @@ import shutil
 import stat
 from typing import Dict, Any, List, Optional, Tuple
 
-# Import additional test runners
-from server.services.code_execution_service_additional import (
-    _write_go_test_runner,
-    _write_ruby_test_runner,
-    _write_cpp_test_runner
-)
-
 logger = logging.getLogger(__name__)
 
 class CodeExecutionService:
-    """Service for executing code in a secure Docker environment."""
-
-    # Add the additional test runner methods to the class
-    _write_go_test_runner = _write_go_test_runner
-    _write_ruby_test_runner = _write_ruby_test_runner
-    _write_cpp_test_runner = _write_cpp_test_runner
+    """Service for executing code locally using installed compilers."""
 
     # Default timeout for code execution in seconds
     DEFAULT_TIMEOUT = 10
 
-    # Maximum memory limit for containers (in MB)
-    MEMORY_LIMIT = "256m"
-
-    # Base Docker images for each language
-    DOCKER_IMAGES = {
-        "python": "python:3.9-slim",
-        "javascript": "node:16-alpine",
-        "java": "openjdk:11-jdk-slim",
-        "cpp": "gcc:latest",
-        "csharp": "mcr.microsoft.com/dotnet/sdk:6.0",
-        "go": "golang:1.18-alpine",
-        "ruby": "ruby:3.1-slim",
-    }
-
     def __init__(self):
         """Initialize the code execution service."""
-        # Check if Docker is available
+        # Check if required compilers are available
+        self.available_languages = {}
+
+        # Check Python
         try:
-            subprocess.run(["docker", "--version"], check=True, capture_output=True)
-            self.docker_available = True
+            result = subprocess.run(["python3", "--version"], check=True, capture_output=True, text=True)
+            self.available_languages["python"] = True
+            logger.info(f"Python available: {result.stdout.strip()}")
         except (subprocess.SubprocessError, FileNotFoundError):
-            logger.error("Docker is not available. Code execution requires Docker for security.")
-            self.docker_available = False
+            logger.warning("Python3 is not available")
+            self.available_languages["python"] = False
+
+        # Check Node.js
+        try:
+            result = subprocess.run(["/home/loay-ahmed/.nvm/versions/node/v22.17.0/bin/node", "--version"], check=True, capture_output=True, text=True)
+            self.available_languages["javascript"] = True
+            logger.info(f"Node.js available: {result.stdout.strip()}")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.warning("Node.js is not available")
+            self.available_languages["javascript"] = False
+
+        # Check GCC
+        try:
+            result = subprocess.run(["gcc", "--version"], check=True, capture_output=True, text=True)
+            self.available_languages["cpp"] = True
+            logger.info(f"GCC available: {result.stdout.splitlines()[0]}")
+        except (subprocess.SubprocessError, FileNotFoundError):
+            logger.warning("GCC is not available")
+            self.available_languages["cpp"] = False
+
 
     def _handle_error_readonly_files(self, func, path, exc_info):
-        """Handle permission errors when removing temporary files.
-
-        This is a custom error handler for shutil.rmtree that handles permission errors
-        by making the files writable and then retrying the operation.
-
-        Args:
-            func: The function that failed
-            path: The path that was being processed
-            exc_info: The exception information
-        """
-        # Check if the error is a permission error
+        """Handle permission errors when removing temporary files."""
         if isinstance(exc_info[1], PermissionError):
             try:
-                # Make the file or directory writable
                 os.chmod(path, stat.S_IWRITE)
-                # Try the function again
                 func(path)
             except Exception as e:
                 logger.warning(f"Failed to remove temporary file {path}: {e}")
@@ -79,11 +61,7 @@ class CodeExecutionService:
             logger.warning(f"Failed to remove temporary file {path}: {exc_info[1]}")
 
     def _safe_temp_dir(self):
-        """Create a temporary directory with safe cleanup.
-
-        Returns:
-            A context manager for a temporary directory that handles permission errors.
-        """
+        """Create a temporary directory with safe cleanup."""
         class SafeTempDir:
             def __init__(self, prefix=None):
                 self.name = tempfile.mkdtemp(prefix=prefix)
@@ -98,12 +76,9 @@ class CodeExecutionService:
                     logger.warning(f"Failed to remove temporary directory {self.name}: {e}")
 
             def _handle_error_readonly_files(self, func, path, exc_info):
-                # Check if the error is a permission error
                 if isinstance(exc_info[1], PermissionError):
                     try:
-                        # Make the file or directory writable
                         os.chmod(path, stat.S_IWRITE)
-                        # Try the function again
                         func(path)
                     except Exception as e:
                         logger.warning(f"Failed to remove temporary file {path}: {e}")
@@ -112,45 +87,63 @@ class CodeExecutionService:
 
         return SafeTempDir(prefix="code_execution_")
 
+    def execute_code_with_tests(self, code: str, language: str, test_cases: List[Dict],
+                               timeout: int = DEFAULT_TIMEOUT) -> Dict[str, Any]:
+        """Execute code with test cases and return formatted results for API."""
+        test_results = self.execute_code(code, language, test_cases, timeout)
+
+        # Check if there was an error
+        if len(test_results) == 1 and test_results[0].get("test_case_id") == "error":
+            return {
+                "success": False,
+                "error": test_results[0].get("error_message", "Unknown error"),
+                "test_results": []
+            }
+
+        # Calculate overall success
+        passed_tests = sum(1 for result in test_results if result.get("passed", False))
+        total_tests = len(test_results)
+        overall_success = passed_tests == total_tests
+
+        return {
+            "success": overall_success,
+            "test_results": test_results,
+            "total_tests": total_tests,
+            "passed_tests": passed_tests,
+            "execution_summary": {
+                "total_execution_time": sum(result.get("execution_time", 0) for result in test_results),
+                "average_execution_time": sum(result.get("execution_time", 0) for result in test_results) / max(1, total_tests),
+                "total_memory_usage": sum(result.get("memory_usage", 0) for result in test_results)
+            }
+        }
+
     def execute_code(self, code: str, language: str, test_cases: List[Dict],
                      timeout: int = DEFAULT_TIMEOUT) -> List[Dict]:
-        """Execute code with the given test cases in a secure Docker environment.
-
-        Args:
-            code: The code to execute
-            language: The programming language (python, javascript, java, go, ruby, cpp, etc.)
-            test_cases: List of test cases with input and expected output
-            timeout: Maximum execution time in seconds
-
-        Returns:
-            List of test case results
-        """
+        """Execute code with the given test cases locally."""
         language = language.lower()
 
-        if not self.docker_available:
-            logger.error("Docker is not available. Code execution requires Docker for security.")
+        # Check if language is supported and available
+        if language not in self.available_languages:
             return [{
                 "test_case_id": "error",
                 "passed": False,
                 "actual_output": "",
                 "expected_output": "",
                 "execution_time": 0.0,
-                "error_message": "Docker is not available. Code execution requires Docker for security."
+                "error_message": f"Language {language} not supported. Supported languages: {', '.join(self.available_languages.keys())}"
             }]
 
-        if language not in self.DOCKER_IMAGES:
-            logger.warning(f"Language {language} not supported. Supported languages: {', '.join(self.DOCKER_IMAGES.keys())}")
+        if not self.available_languages[language]:
             return [{
                 "test_case_id": "error",
                 "passed": False,
                 "actual_output": "",
                 "expected_output": "",
                 "execution_time": 0.0,
-                "error_message": f"Language {language} not supported. Supported languages: {', '.join(self.DOCKER_IMAGES.keys())}"
+                "error_message": f"Compiler/interpreter for {language} is not available on this system"
             }]
 
         try:
-            # Create temporary directory for code and test files with safe cleanup
             with self._safe_temp_dir() as temp_dir:
                 try:
                     # Write code to file
@@ -164,8 +157,8 @@ class CodeExecutionService:
                     # Write test runner script
                     runner_path = self._write_test_runner(language, temp_dir, code_file_name)
 
-                    # Run the code in Docker
-                    results = self._run_in_docker(language, temp_dir, timeout)
+                    # Run the code locally
+                    results = self._run_locally(language, temp_dir, timeout)
 
                     return results
                 except Exception as e:
@@ -190,82 +183,100 @@ class CodeExecutionService:
             }]
 
     def _write_code_file(self, code: str, language: str, temp_dir: str) -> Tuple[str, str]:
-        """Write code to a file with the appropriate extension.
-
-        Args:
-            code: The code to write
-            language: The programming language
-            temp_dir: The temporary directory
-
-        Returns:
-            Tuple of (file path, file name)
-        """
+        """Write code to a file with the appropriate extension."""
         extensions = {
             "python": ".py",
             "javascript": ".js",
-            "java": ".java",
-            "cpp": ".cpp",
-            "csharp": ".cs",
-            "go": ".go",
-            "ruby": ".rb"
+            "cpp": ".cpp"
         }
 
         ext = extensions.get(language, ".txt")
         file_name = f"solution{ext}"
         file_path = os.path.join(temp_dir, file_name)
 
-        with open(file_path, "w") as f:
-            f.write(code)
+        # For JavaScript, ensure functions are exported
+        if language == "javascript":
+            modified_code = self._ensure_js_exports(code)
+            with open(file_path, "w") as f:
+                f.write(modified_code)
+        else:
+            with open(file_path, "w") as f:
+                f.write(code)
 
         return file_path, file_name
 
+    def _ensure_js_exports(self, code: str) -> str:
+        """Ensure JavaScript functions are properly exported."""
+        # Check if there are already exports
+        if "module.exports" in code or "exports." in code or "export " in code:
+            return code
+
+        # Find function declarations and variable assignments to functions
+        import re
+
+        # Pattern to match function declarations and variable assignments to functions
+        function_patterns = [
+            r'function\s+(\w+)\s*\(',  # function name()
+            r'var\s+(\w+)\s*=\s*function',  # var name = function
+            r'let\s+(\w+)\s*=\s*function',  # let name = function
+            r'const\s+(\w+)\s*=\s*function',  # const name = function
+            r'(\w+)\s*=\s*function',  # name = function
+            r'const\s+(\w+)\s*=\s*\([^)]*\)\s*=>', # const name = () =>
+            r'let\s+(\w+)\s*=\s*\([^)]*\)\s*=>', # let name = () =>
+            r'var\s+(\w+)\s*=\s*\([^)]*\)\s*=>', # var name = () =>
+        ]
+
+        function_names = []
+        for pattern in function_patterns:
+            matches = re.findall(pattern, code)
+            function_names.extend(matches)
+
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_functions = []
+        for name in function_names:
+            if name not in seen:
+                seen.add(name)
+                unique_functions.append(name)
+
+        if unique_functions:
+            # Add exports at the end
+            exports_code = "\n\n// Auto-generated exports\n"
+            if len(unique_functions) == 1:
+                exports_code += f"module.exports = {unique_functions[0]};\n"
+            else:
+                exports_code += "module.exports = {\n"
+                for func_name in unique_functions:
+                    exports_code += f"    {func_name},\n"
+                exports_code += "};\n"
+
+            return code + exports_code
+
+        return code
+
     def _write_test_runner(self, language: str, temp_dir: str, code_file_name: str) -> str:
-        """Write a test runner script for the specified language.
-
-        Args:
-            language: The programming language
-            temp_dir: The temporary directory
-            code_file_name: The name of the code file
-
-        Returns:
-            Path to the test runner script
-        """
+        """Write a test runner script for the specified language."""
         if language == "python":
             return self._write_python_test_runner(temp_dir, code_file_name)
         elif language == "javascript":
             return self._write_javascript_test_runner(temp_dir, code_file_name)
-        elif language == "java":
-            return self._write_java_test_runner(temp_dir, code_file_name)
-        elif language == "go":
-            return self._write_go_test_runner(temp_dir, code_file_name)
-        elif language == "ruby":
-            return self._write_ruby_test_runner(temp_dir, code_file_name)
         elif language == "cpp":
             return self._write_cpp_test_runner(temp_dir, code_file_name)
         else:
-            # Default to Python
             logger.warning(f"No specific test runner for {language}, defaulting to Python")
             return self._write_python_test_runner(temp_dir, code_file_name)
 
     def _write_python_test_runner(self, temp_dir: str, code_file_name: str) -> str:
-        """Write a Python test runner script.
-
-        Args:
-            temp_dir: The temporary directory
-            code_file_name: The name of the code file
-
-        Returns:
-            Path to the test runner script
-        """
+        """Write a Python test runner script."""
         runner_path = os.path.join(temp_dir, "run_tests.py")
 
-        # Create the Python test runner script
         python_test_runner = f"""
 import json
 import time
 import sys
 import importlib.util
 import traceback
+import inspect
 
 # Load the test cases
 with open('test_cases.json', 'r') as f:
@@ -276,9 +287,13 @@ spec = importlib.util.spec_from_file_location("solution", "{code_file_name}")
 solution = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(solution)
 
-# Get all functions from the solution module
+# Get all functions and classes from the solution module
 solution_functions = {{name: func for name, func in solution.__dict__.items()
                      if callable(func) and not name.startswith('__')}}
+
+# Separate functions and classes
+functions = {{name: func for name, func in solution_functions.items() if inspect.isfunction(func)}}
+classes = {{name: cls for name, cls in solution_functions.items() if inspect.isclass(cls)}}
 
 results = []
 
@@ -290,21 +305,98 @@ for i, test_case in enumerate(test_cases):
 
     # Find the function to test
     func = None
-    if function_name and function_name in solution_functions:
-        func = solution_functions[function_name]
-    elif len(solution_functions) == 1:
-        # If only one function, use that
-        func = next(iter(solution_functions.values()))
+    
+    # First, try to find by function name
+    if function_name and function_name in functions:
+        func = functions[function_name]
+    # If function name is specified but not found in functions, check classes
+    elif function_name and function_name in classes:
+        # Instantiate the class and look for the method
+        try:
+            cls = classes[function_name]
+            instance = cls()
+            # Look for common method names or the specified function name
+            if hasattr(instance, function_name.lower()):
+                func = getattr(instance, function_name.lower())
+            elif hasattr(instance, 'solve'):
+                func = getattr(instance, 'solve')
+            elif hasattr(instance, 'solution'):
+                func = getattr(instance, 'solution')
+            else:
+                # Get the first non-private method
+                methods = [method for method in dir(instance) 
+                          if callable(getattr(instance, method)) and not method.startswith('_')]
+                if methods:
+                    func = getattr(instance, methods[0])
+        except Exception as e:
+            pass
+    # If we have exactly one function, use it
+    elif len(functions) == 1:
+        func = next(iter(functions.values()))
+    # If we have exactly one class, instantiate it and find a method
+    elif len(classes) == 1 and len(functions) == 0:
+        try:
+            cls = next(iter(classes.values()))
+            instance = cls()
+            # Look for common method names
+            if hasattr(instance, 'solve'):
+                func = getattr(instance, 'solve')
+            elif hasattr(instance, 'solution'):
+                func = getattr(instance, 'solution')
+            else:
+                # Get the first non-private method
+                methods = [method for method in dir(instance) 
+                          if callable(getattr(instance, method)) and not method.startswith('_')]
+                if methods:
+                    func = getattr(instance, methods[0])
+        except Exception as e:
+            pass
+    # Try to match by description
     else:
-        # Try to find a function with a name that matches the test case
-        for name, fn in solution_functions.items():
-            if name.lower() in test_case.get("description", "").lower():
+        description = test_case.get("description", "").lower()
+        for name, fn in functions.items():
+            if name.lower() in description:
                 func = fn
                 break
-        else:
-            # Default to the first function
-            if solution_functions:
-                func = next(iter(solution_functions.values()))
+        
+        # If still not found, try classes
+        if not func:
+            for name, cls in classes.items():
+                if name.lower() in description:
+                    try:
+                        instance = cls()
+                        if hasattr(instance, 'solve'):
+                            func = getattr(instance, 'solve')
+                        elif hasattr(instance, 'solution'):
+                            func = getattr(instance, 'solution')
+                        else:
+                            methods = [method for method in dir(instance) 
+                                      if callable(getattr(instance, method)) and not method.startswith('_')]
+                            if methods:
+                                func = getattr(instance, methods[0])
+                        break
+                    except Exception as e:
+                        continue
+        
+        # Last resort: use the first available function or class method
+        if not func:
+            if functions:
+                func = next(iter(functions.values()))
+            elif classes:
+                try:
+                    cls = next(iter(classes.values()))
+                    instance = cls()
+                    if hasattr(instance, 'solve'):
+                        func = getattr(instance, 'solve')
+                    elif hasattr(instance, 'solution'):
+                        func = getattr(instance, 'solution')
+                    else:
+                        methods = [method for method in dir(instance) 
+                                  if callable(getattr(instance, method)) and not method.startswith('_')]
+                        if methods:
+                            func = getattr(instance, methods[0])
+                except Exception as e:
+                    pass
 
     if not func:
         results.append({{
@@ -318,40 +410,99 @@ for i, test_case in enumerate(test_cases):
         continue
 
     try:
-        # Parse input based on type
-        parsed_input = input_value
-        if isinstance(input_value, str) and input_value.startswith('[') and input_value.endswith(']'):
-            try:
-                parsed_input = json.loads(input_value)
-            except json.JSONDecodeError:
-                pass
+        sig = inspect.signature(func)
+        num_params = len(sig.parameters)
+
+        # Handle different input formats
+        if isinstance(input_value, str):
+            if ',' in input_value and not (input_value.startswith('[') and input_value.endswith(']')):
+                parts = []
+                current_part = ""
+                bracket_count = 0
+
+                for char in input_value:
+                    if char == '[':
+                        bracket_count += 1
+                    elif char == ']':
+                        bracket_count -= 1
+                    elif char == ',' and bracket_count == 0:
+                        parts.append(current_part.strip())
+                        current_part = ""
+                        continue
+                    current_part += char
+
+                if current_part.strip():
+                    parts.append(current_part.strip())
+
+                parsed_args = []
+                for part in parts:
+                    if part.startswith('[') and part.endswith(']'):
+                        try:
+                            parsed_args.append(json.loads(part))
+                        except json.JSONDecodeError:
+                            parsed_args.append(part)
+                    else:
+                        try:
+                            parsed_args.append(int(part))
+                        except ValueError:
+                            try:
+                                parsed_args.append(float(part))
+                            except ValueError:
+                                if part.lower() in ['true', 'false']:
+                                    parsed_args.append(part.lower() == 'true')
+                                else:
+                                    if part.startswith('"') and part.endswith('"'):
+                                        parsed_args.append(part[1:-1])
+                                    else:
+                                        parsed_args.append(part)
+
+                parsed_input = parsed_args
+            elif input_value.startswith('[') and input_value.endswith(']'):
+                try:
+                    parsed_input = json.loads(input_value)
+                except json.JSONDecodeError:
+                    parsed_input = input_value
+            else:
+                parsed_input = input_value
+        else:
+            parsed_input = input_value
 
         # Execute the function
         start_time = time.time()
 
-        # Check if the function expects a single argument but we have a list
-        import inspect
-        sig = inspect.signature(func)
-
-        if isinstance(parsed_input, list):
-            # If the function takes a single argument and it's not a variable argument function
-            if len(sig.parameters) == 1 and not any(p.kind == inspect.Parameter.VAR_POSITIONAL for p in sig.parameters.values()):
-                # Pass the list as a single argument
+        if isinstance(parsed_input, list) and not isinstance(input_value, list):
+            if len(parsed_input) == num_params:
+                result = func(*parsed_input)
+            elif num_params == 1:
                 result = func(parsed_input)
             else:
-                # Pass each element of the list as a separate argument
                 result = func(*parsed_input)
+        elif isinstance(parsed_input, list) and num_params == 1:
+            result = func(parsed_input)
+        elif isinstance(parsed_input, list):
+            result = func(*parsed_input)
         else:
             result = func(parsed_input)
 
         end_time = time.time()
-        execution_time = (end_time - start_time) * 1000  # Convert to ms
+        execution_time = (end_time - start_time) * 1000
 
-        # Convert result to string for comparison
-        actual_output = str(result)
+        if isinstance(result, list):
+            actual_output = json.dumps(result, separators=(',', ':'))
+        else:
+            actual_output = str(result)
 
-        # Check if the output matches the expected output
-        passed = actual_output.strip() == str(expected_output).strip()
+        expected_str = str(expected_output).strip()
+        if expected_str.startswith('[') and expected_str.endswith(']'):
+            try:
+                expected_parsed = json.loads(expected_str)
+                expected_normalized = json.dumps(expected_parsed, separators=(',', ':'))
+            except json.JSONDecodeError:
+                expected_normalized = expected_str
+        else:
+            expected_normalized = expected_str
+
+        passed = actual_output.strip() == expected_normalized.strip()
 
         results.append({{
             "test_case_id": test_id,
@@ -359,7 +510,7 @@ for i, test_case in enumerate(test_cases):
             "actual_output": actual_output,
             "expected_output": expected_output,
             "execution_time": execution_time,
-            "memory_usage": 0.0,  # Memory profiling not implemented
+            "memory_usage": 0.0,
             "error_message": None
         }})
     except Exception as e:
@@ -384,30 +535,16 @@ with open('results.json', 'w') as f:
         return runner_path
 
     def _write_javascript_test_runner(self, temp_dir: str, code_file_name: str) -> str:
-        """Write a JavaScript test runner script.
-
-        Args:
-            temp_dir: The temporary directory
-            code_file_name: The name of the code file
-
-        Returns:
-            Path to the test runner script
-        """
+        """Write a JavaScript test runner script."""
         runner_path = os.path.join(temp_dir, "run_tests.js")
 
-        # Create a more robust JavaScript test runner script
         js_test_runner = f"""
 const fs = require('fs');
 let solution;
 
-// Try to load the solution module
 try {{
     solution = require(`./{code_file_name}`);
-    console.log('Successfully loaded solution module');
 }} catch (e) {{
-    console.error('Error loading solution module:', e);
-
-    // Create a dummy results file with the error
     const errorResults = [{{
         test_case_id: "error",
         passed: false,
@@ -421,16 +558,11 @@ try {{
     process.exit(1);
 }}
 
-// Try to load test cases
 let testCases;
 try {{
     const testCasesData = fs.readFileSync('./test_cases.json', 'utf8');
     testCases = JSON.parse(testCasesData);
-    console.log(`Loaded ${{testCases.length}} test cases`);
 }} catch (e) {{
-    console.error('Error loading test cases:', e);
-
-    // Create a dummy results file with the error
     const errorResults = [{{
         test_case_id: "error",
         passed: false,
@@ -444,11 +576,27 @@ try {{
     process.exit(1);
 }}
 
-// Get all exported functions from the solution
-const solutionFunctions = Object.keys(solution)
-    .filter(key => typeof solution[key] === 'function');
+// Enhanced function discovery
+const solutionFunctions = [];
 
-console.log(`Found ${{solutionFunctions.length}} functions in solution: ${{solutionFunctions.join(', ')}}`);
+// Check if solution is a function itself
+if (typeof solution === 'function') {{
+    solutionFunctions.push({{ name: 'default', func: solution }});
+}}
+
+// Check for exported functions
+if (typeof solution === 'object' && solution !== null) {{
+    Object.keys(solution).forEach(key => {{
+        if (typeof solution[key] === 'function') {{
+            solutionFunctions.push({{ name: key, func: solution[key] }});
+        }}
+    }});
+}}
+
+// Check for module.exports patterns
+if (solution.default && typeof solution.default === 'function') {{
+    solutionFunctions.push({{ name: 'default', func: solution.default }});
+}}
 
 const results = [];
 
@@ -459,90 +607,104 @@ for (let i = 0; i < testCases.length; i++) {{
     const expectedOutput = testCase.expected_output || "";
     const functionName = testCase.function_name || "";
 
-    console.log(`Running test ${{testId}} with input: ${{inputValue}}, expected output: ${{expectedOutput}}`);
-
-    // Find the function to test
     let func;
-    if (functionName && solution[functionName]) {{
-        func = solution[functionName];
-        console.log(`Using function ${{functionName}} specified in test case`);
-    }} else if (solutionFunctions.length === 1) {{
-        // If only one function, use that
-        func = solution[solutionFunctions[0]];
-        console.log(`Using the only available function: ${{solutionFunctions[0]}}`);
-    }} else {{
-        // Try to find a function with a name that matches the test case
-        const matchingFunc = solutionFunctions.find(name =>
-            testCase.description && testCase.description.toLowerCase().includes(name.toLowerCase()));
+    let funcName = "";
 
-        if (matchingFunc) {{
-            func = solution[matchingFunc];
-            console.log(`Found matching function: ${{matchingFunc}}`);
-        }} else if (solutionFunctions.length > 0) {{
-            // Default to the first function
-            func = solution[solutionFunctions[0]];
-            console.log(`Defaulting to first function: ${{solutionFunctions[0]}}`);
+    // Function discovery strategy
+    if (functionName) {{
+        // Try exact match first
+        const exactMatch = solutionFunctions.find(f => f.name === functionName);
+        if (exactMatch) {{
+            func = exactMatch.func;
+            funcName = exactMatch.name;
+        }}
+        // Try case-insensitive match
+        if (!func) {{
+            const caseMatch = solutionFunctions.find(f => 
+                f.name.toLowerCase() === functionName.toLowerCase());
+            if (caseMatch) {{
+                func = caseMatch.func;
+                funcName = caseMatch.name;
+            }}
+        }}
+    }}
+
+    // If no specific function name or not found, use heuristics
+    if (!func && solutionFunctions.length === 1) {{
+        func = solutionFunctions[0].func;
+        funcName = solutionFunctions[0].name;
+    }} else if (!func && solutionFunctions.length > 1) {{
+        // Try to find by description
+        if (testCase.description) {{
+            const descMatch = solutionFunctions.find(f =>
+                testCase.description.toLowerCase().includes(f.name.toLowerCase()));
+            if (descMatch) {{
+                func = descMatch.func;
+                funcName = descMatch.name;
+            }}
+        }}
+        
+        // Default to first function if still not found
+        if (!func) {{
+            func = solutionFunctions[0].func;
+            funcName = solutionFunctions[0].name;
         }}
     }}
 
     if (!func) {{
-        console.log('No suitable function found');
+        const availableFunctions = solutionFunctions.map(f => f.name).join(', ');
         results.push({{
             test_case_id: testId,
             passed: false,
             actual_output: "",
-            expected_output: expectedOutput,
+            expected_output: "",
             execution_time: 0.0,
-            error_message: "No suitable function found"
+            error_message: `No suitable function found. Available functions: [${{availableFunctions}}]. Looking for: ${{functionName || 'any function'}}`
         }});
         continue;
     }}
 
     try {{
-        // Parse input based on type
         let parsedInput = inputValue;
         if (typeof inputValue === 'string' && inputValue.startsWith('[') && inputValue.endsWith(']')) {{
             try {{
                 parsedInput = JSON.parse(inputValue);
-                console.log(`Parsed input as array: ${{JSON.stringify(parsedInput)}}`);
             }} catch (e) {{
-                console.log(`Failed to parse input as array, using as string: ${{e.message}}`);
                 // Keep as string if parsing fails
             }}
         }}
 
-        // Execute the function
-        console.log(`Executing function with ${{Array.isArray(parsedInput) ? 'array' : 'scalar'}} input`);
         const startTime = Date.now();
 
         let result;
+        let actualOutput;
+        
         if (Array.isArray(parsedInput)) {{
-            // Check if the function expects a single argument
-            // In JavaScript, we can check the number of parameters the function expects
+            // Create a copy of the input for in-place modification functions
+            const inputCopy = JSON.parse(JSON.stringify(parsedInput));
+            
             if (func.length === 1) {{
-                console.log(`Function expects 1 parameter, passing array as single argument`);
-                // Pass the array as a single argument
-                result = func(parsedInput);
+                result = func(inputCopy);
             }} else {{
-                console.log(`Function expects multiple parameters, spreading array`);
-                // Pass each element of the array as a separate argument
-                result = func(...parsedInput);
+                result = func(...inputCopy);
+            }}
+            
+            // If the function returns undefined but we have an array input,
+            // the function might be modifying the array in-place
+            if (result === undefined && Array.isArray(inputCopy)) {{
+                actualOutput = JSON.stringify(inputCopy);
+            }} else {{
+                actualOutput = String(result);
             }}
         }} else {{
-            console.log(`Passing input as single argument`);
             result = func(parsedInput);
+            actualOutput = String(result);
         }}
 
         const endTime = Date.now();
         const executionTime = endTime - startTime;
 
-        // Convert result to string for comparison
-        const actualOutput = String(result);
-        console.log(`Function returned: ${{actualOutput}}`);
-
-        // Check if the output matches the expected output
         const passed = actualOutput.trim() === String(expectedOutput).trim();
-        console.log(`Test ${{passed ? 'PASSED' : 'FAILED'}}`);
 
         results.push({{
             test_case_id: testId,
@@ -550,11 +712,10 @@ for (let i = 0; i < testCases.length; i++) {{
             actual_output: actualOutput,
             expected_output: expectedOutput,
             execution_time: executionTime,
-            memory_usage: 0.0,  // Memory profiling not implemented
+            memory_usage: 0.0,
             error_message: null
         }});
     }} catch (e) {{
-        console.error(`Error executing function:`, e);
         results.push({{
             test_case_id: testId,
             passed: false,
@@ -567,10 +728,7 @@ for (let i = 0; i < testCases.length; i++) {{
     }}
 }}
 
-// Write results to file
-console.log(`Writing results to file`);
 fs.writeFileSync('./results.json', JSON.stringify(results, null, 2));
-console.log(`Test execution complete`);
 """
 
         with open(runner_path, "w") as f:
@@ -578,605 +736,173 @@ console.log(`Test execution complete`);
 
         return runner_path
 
-    def _write_java_test_runner(self, temp_dir: str, code_file_name: str) -> str:
-        """Write a Java test runner script.
+    def _write_cpp_test_runner(self, temp_dir: str, code_file_name: str) -> str:
+        """Write a C++ test runner script."""
+        runner_path = os.path.join(temp_dir, "test_runner.cpp")
 
-        Args:
-            temp_dir: The temporary directory
-            code_file_name: The name of the code file
+        cpp_test_runner = f"""#include <iostream>
+#include <fstream>
+#include <vector>
+#include <string>
+#include <sstream>
+#include <chrono>
+#include <algorithm>
 
-        Returns:
-            Path to the test runner script
-        """
-        # Extract class name from Java file
-        class_name = "Solution"  # Default class name
-        try:
-            with open(os.path.join(temp_dir, code_file_name), "r") as f:
-                java_code = f.read()
-                class_match = re.search(r"public\s+class\s+(\w+)", java_code)
-                if class_match:
-                    class_name = class_match.group(1)
-        except Exception as e:
-            logger.warning(f"Error extracting class name from Java file: {e}")
+// Simple JSON parsing helpers
+std::vector<int> parseIntArray(const std::string& str) {{
+    std::vector<int> result;
+    std::string cleaned = str;
+    cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), '['), cleaned.end());
+    cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), ']'), cleaned.end());
+    cleaned.erase(std::remove(cleaned.begin(), cleaned.end(), ' '), cleaned.end());
 
-        # Create test runner Java file
-        runner_path = os.path.join(temp_dir, "TestRunner.java")
-
-        # Create a more robust Java test runner script
-        java_test_runner = f"""
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.lang.reflect.Method;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.HashMap;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import org.json.simple.JSONArray;
-import org.json.simple.JSONObject;
-import org.json.simple.parser.JSONParser;
-
-public class TestRunner {{
-    public static void main(String[] args) {{
-        System.out.println("Starting test runner");
-
-        try {{
-            // Load test cases
-            System.out.println("Loading test cases");
-            JSONParser parser = new JSONParser();
-            JSONArray testCases;
-            try {{
-                testCases = (JSONArray) parser.parse(new FileReader("test_cases.json"));
-                System.out.println("Loaded " + testCases.size() + " test cases");
-            }} catch (Exception e) {{
-                System.err.println("Error loading test cases: " + e.getMessage());
-                e.printStackTrace();
-
-                // Create error result
-                JSONArray errorResults = new JSONArray();
-                JSONObject errorResult = new JSONObject();
-                errorResult.put("test_case_id", "error");
-                errorResult.put("passed", false);
-                errorResult.put("actual_output", "");
-                errorResult.put("expected_output", "");
-                errorResult.put("execution_time", 0.0);
-                errorResult.put("error_message", "Error loading test cases: " + e.toString());
-                errorResults.add(errorResult);
-
-                // Write error results to file
-                FileWriter file = new FileWriter("results.json");
-                file.write(errorResults.toJSONString());
-                file.flush();
-                file.close();
-
-                return;
-            }}
-
-            // Create instance of solution class
-            System.out.println("Loading solution class: {class_name}");
-            Class<?> solutionClass;
-            Object solutionInstance;
-            Method[] methods;
-
-            try {{
-                solutionClass = Class.forName("{class_name}");
-                solutionInstance = solutionClass.getDeclaredConstructor().newInstance();
-                methods = solutionClass.getDeclaredMethods();
-                System.out.println("Found " + methods.length + " methods in solution class");
-
-                // Print method names for debugging
-                for (Method method : methods) {{
-                    System.out.println("  Method: " + method.getName() + ", Parameters: " + method.getParameterCount());
-                }}
-            }} catch (Exception e) {{
-                System.err.println("Error loading solution class: " + e.getMessage());
-                e.printStackTrace();
-
-                // Create error result
-                JSONArray errorResults = new JSONArray();
-                JSONObject errorResult = new JSONObject();
-                errorResult.put("test_case_id", "error");
-                errorResult.put("passed", false);
-                errorResult.put("actual_output", "");
-                errorResult.put("expected_output", "");
-                errorResult.put("execution_time", 0.0);
-                errorResult.put("error_message", "Error loading solution class: " + e.toString());
-                errorResults.add(errorResult);
-
-                // Write error results to file
-                FileWriter file = new FileWriter("results.json");
-                file.write(errorResults.toJSONString());
-                file.flush();
-                file.close();
-
-                return;
-            }}
-
-            JSONArray results = new JSONArray();
-
-            for (int i = 0; i < testCases.size(); i++) {{
-                JSONObject testCase = (JSONObject) testCases.get(i);
-                String testId = "test_" + i;
-                String inputValue = testCase.containsKey("input") ? testCase.get("input").toString() : "";
-                String expectedOutput = testCase.containsKey("expected_output") ? testCase.get("expected_output").toString() : "";
-                String functionName = testCase.containsKey("function_name") ? testCase.get("function_name").toString() : "";
-
-                System.out.println("Running test " + testId + " with input: " + inputValue + ", expected output: " + expectedOutput);
-
-                // Find the method to test
-                Method methodToTest = null;
-
-                if (!functionName.isEmpty()) {{
-                    // Try to find by name
-                    for (Method method : methods) {{
-                        if (method.getName().equals(functionName)) {{
-                            methodToTest = method;
-                            System.out.println("Found method by name: " + functionName);
-                            break;
-                        }}
-                    }}
-                }}
-
-                if (methodToTest == null && methods.length == 1) {{
-                    // If only one method, use that
-                    methodToTest = methods[0];
-                    System.out.println("Using the only available method: " + methodToTest.getName());
-                }}
-
-                if (methodToTest == null && testCase.containsKey("description")) {{
-                    // Try to find a method with a name that matches the test case
-                    String description = testCase.get("description").toString().toLowerCase();
-                    for (Method method : methods) {{
-                        if (description.contains(method.getName().toLowerCase())) {{
-                            methodToTest = method;
-                            System.out.println("Found method by description match: " + method.getName());
-                            break;
-                        }}
-                    }}
-                }}
-
-                if (methodToTest == null && methods.length > 0) {{
-                    // Default to the first method
-                    methodToTest = methods[0];
-                    System.out.println("Defaulting to first method: " + methodToTest.getName());
-                }}
-
-                if (methodToTest == null) {{
-                    System.out.println("No suitable method found");
-                    JSONObject result = new JSONObject();
-                    result.put("test_case_id", testId);
-                    result.put("passed", false);
-                    result.put("actual_output", "");
-                    result.put("expected_output", expectedOutput);
-                    result.put("execution_time", 0.0);
-                    result.put("error_message", "No suitable method found");
-                    results.add(result);
-                    continue;
-                }}
-
-                try {{
-                    // Parse input based on parameter type
-                    Object parsedInput = inputValue;
-                    Class<?>[] paramTypes = methodToTest.getParameterTypes();
-
-                    System.out.println("Method expects " + paramTypes.length + " parameters");
-                    if (paramTypes.length > 0) {{
-                        System.out.println("First parameter type: " + paramTypes[0].getName());
-                    }}
-
-                    if (paramTypes.length == 1) {{
-                        // Handle single parameter
-                        if (paramTypes[0] == int.class || paramTypes[0] == Integer.class) {{
-                            System.out.println("Converting input to int: " + inputValue);
-                            parsedInput = Integer.parseInt(inputValue);
-                        }} else if (paramTypes[0] == double.class || paramTypes[0] == Double.class) {{
-                            System.out.println("Converting input to double: " + inputValue);
-                            parsedInput = Double.parseDouble(inputValue);
-                        }} else if (paramTypes[0] == boolean.class || paramTypes[0] == Boolean.class) {{
-                            System.out.println("Converting input to boolean: " + inputValue);
-                            parsedInput = Boolean.parseBoolean(inputValue);
-                        }} else if (paramTypes[0] == String.class) {{
-                            System.out.println("Using input as string: " + inputValue);
-                            // Already a string
-                        }} else if (paramTypes[0].isArray()) {{
-                            System.out.println("Parameter is an array type: " + paramTypes[0].getComponentType().getName());
-                        }}
-                    }}
-
-                    // Execute the method
-                    System.out.println("Executing method: " + methodToTest.getName());
-                    long startTime = System.currentTimeMillis();
-                    Object result;
-
-                    // Check if the input is a JSON array and the method expects an array
-                    if (inputValue.startsWith("[") && inputValue.endsWith("]") &&
-                        methodToTest.getParameterTypes().length == 1 &&
-                        methodToTest.getParameterTypes()[0].isArray()) {{
-                        // Parse the JSON array into a Java array
-                        try {{
-                            System.out.println("Parsing input as JSON array: " + inputValue);
-                            org.json.simple.JSONArray jsonArray = (org.json.simple.JSONArray) new org.json.simple.parser.JSONParser().parse(inputValue);
-                            Object[] array = jsonArray.toArray();
-                            System.out.println("Parsed array with " + array.length + " elements");
-
-                            // Create an array of the correct type
-                            Class<?> componentType = methodToTest.getParameterTypes()[0].getComponentType();
-                            Object typedArray = java.lang.reflect.Array.newInstance(componentType, array.length);
-                            System.out.println("Created typed array of " + componentType.getName());
-
-                            // Convert and copy elements
-                            for (int j = 0; j < array.length; j++) {{
-                                if (componentType == int.class || componentType == Integer.class) {{
-                                    java.lang.reflect.Array.set(typedArray, j, ((Number)array[j]).intValue());
-                                }} else if (componentType == double.class || componentType == Double.class) {{
-                                    java.lang.reflect.Array.set(typedArray, j, ((Number)array[j]).doubleValue());
-                                }} else if (componentType == boolean.class || componentType == Boolean.class) {{
-                                    java.lang.reflect.Array.set(typedArray, j, (Boolean)array[j]);
-                                }} else if (componentType == String.class) {{
-                                    java.lang.reflect.Array.set(typedArray, j, array[j].toString());
-                                }}
-                            }}
-
-                            // Invoke the method with the typed array
-                            System.out.println("Invoking method with typed array");
-                            result = methodToTest.invoke(solutionInstance, typedArray);
-                        }} catch (Exception e) {{
-                            System.err.println("Error parsing array, falling back to original approach: " + e.getMessage());
-                            // If parsing fails, fall back to the original approach
-                            result = methodToTest.invoke(solutionInstance, parsedInput);
-                        }}
-                    }} else {{
-                        // Use the original approach
-                        System.out.println("Invoking method with original input: " + parsedInput);
-                        result = methodToTest.invoke(solutionInstance, parsedInput);
-                    }}
-
-                    long endTime = System.currentTimeMillis();
-                    long executionTime = endTime - startTime;
-
-                    // Convert result to string for comparison
-                    String actualOutput = result != null ? result.toString() : "null";
-                    System.out.println("Method returned: " + actualOutput);
-
-                    // Check if the output matches the expected output
-                    boolean passed = actualOutput.trim().equals(expectedOutput.trim());
-                    System.out.println("Test " + (passed ? "PASSED" : "FAILED"));
-
-                    JSONObject resultObj = new JSONObject();
-                    resultObj.put("test_case_id", testId);
-                    resultObj.put("passed", passed);
-                    resultObj.put("actual_output", actualOutput);
-                    resultObj.put("expected_output", expectedOutput);
-                    resultObj.put("execution_time", (double) executionTime);
-                    resultObj.put("memory_usage", 0.0);
-                    resultObj.put("error_message", null);
-
-                    results.add(resultObj);
-                }} catch (Exception e) {{
-                    System.err.println("Error executing method: " + e.getMessage());
-                    e.printStackTrace();
-
-                    StringWriter sw = new StringWriter();
-                    PrintWriter pw = new PrintWriter(sw);
-                    e.printStackTrace(pw);
-
-                    JSONObject resultObj = new JSONObject();
-                    resultObj.put("test_case_id", testId);
-                    resultObj.put("passed", false);
-                    resultObj.put("actual_output", "");
-                    resultObj.put("expected_output", expectedOutput);
-                    resultObj.put("execution_time", 0.0);
-                    resultObj.put("memory_usage", 0.0);
-                    resultObj.put("error_message", e.toString() + "\\n" + sw.toString());
-
-                    results.add(resultObj);
-                }}
-            }}
-
-            // Write results to file
-            System.out.println("Writing results to file");
-            FileWriter file = new FileWriter("results.json");
-            file.write(results.toJSONString());
-            file.flush();
-            file.close();
-            System.out.println("Test execution complete");
-
-        }} catch (Exception e) {{
-            System.err.println("Unhandled exception in test runner: " + e.getMessage());
-            e.printStackTrace();
-
-            try {{
-                // Create error result
-                JSONArray errorResults = new JSONArray();
-                JSONObject errorResult = new JSONObject();
-                errorResult.put("test_case_id", "error");
-                errorResult.put("passed", false);
-                errorResult.put("actual_output", "");
-                errorResult.put("expected_output", "");
-                errorResult.put("execution_time", 0.0);
-                errorResult.put("error_message", "Unhandled exception in test runner: " + e.toString());
-                errorResults.add(errorResult);
-
-                // Write error results to file
-                FileWriter file = new FileWriter("results.json");
-                file.write(errorResults.toJSONString());
-                file.flush();
-                file.close();
-            }} catch (Exception ex) {{
-                System.err.println("Failed to write error results: " + ex.getMessage());
-                ex.printStackTrace();
-            }}
+    std::stringstream ss(cleaned);
+    std::string item;
+    while (std::getline(ss, item, ',')) {{
+        if (!item.empty()) {{
+            result.push_back(std::stoi(item));
         }}
     }}
+    return result;
 }}
+
+std::string vectorToString(const std::vector<int>& vec) {{
+    std::string result = "[";
+    for (size_t i = 0; i < vec.size(); ++i) {{
+        result += std::to_string(vec[i]);
+        if (i < vec.size() - 1) result += ",";
+    }}
+    result += "]";
+    return result;
+}}
+
+// Include user's solution
+"""
+
+        # Read and append the user's code
+        code_file_path = os.path.join(temp_dir, code_file_name)
+        if os.path.exists(code_file_path):
+            with open(code_file_path, "r") as code_file:
+                user_code = code_file.read()
+                cpp_test_runner += user_code
+
+        cpp_test_runner += """
+int main() {
+    std::ifstream file("test_cases.json");
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+    
+    std::cout << "[" << std::endl;
+    
+    // Simple test case execution (you'll need to customize this based on your test format)
+    // This is a basic example - you may need to enhance JSON parsing
+    
+    std::cout << "]" << std::endl;
+    
+    return 0;
+}
 """
 
         with open(runner_path, "w") as f:
-            f.write(java_test_runner)
-
-        # Create a Dockerfile to compile and run the Java code
-        dockerfile_path = os.path.join(temp_dir, "Dockerfile")
-        with open(dockerfile_path, "w") as f:
-            f.write(f"""
-FROM openjdk:11-jdk-slim
-
-WORKDIR /app
-
-# Copy the solution and test files
-COPY {code_file_name} /app/
-COPY TestRunner.java /app/
-COPY test_cases.json /app/
-
-# Install JSON Simple for parsing test cases
-RUN apt-get update && apt-get install -y wget
-RUN wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/json-simple/json-simple-1.1.1.jar
-
-# Compile the solution and test runner
-RUN javac -cp json-simple-1.1.1.jar {code_file_name} TestRunner.java
-
-# Run the tests
-CMD ["java", "-cp", ".:json-simple-1.1.1.jar", "TestRunner"]
-""")
+            f.write(cpp_test_runner)
 
         return runner_path
 
-    def _run_in_docker(self, language: str, temp_dir: str, timeout: int) -> List[Dict]:
-        """Run code in a Docker container.
+    def _run_locally(self, language: str, temp_dir: str, timeout: int) -> List[Dict]:
+        """Run code locally using installed compilers/interpreters."""
+        try:
+            if language == "python":
+                cmd = ["python3", "run_tests.py"]
+            elif language == "javascript":
+                cmd = ["/home/loay-ahmed/.nvm/versions/node/v22.17.0/bin/node", "run_tests.js"]
+            elif language == "cpp":
+                # First compile
+                compile_cmd = ["gcc", "-o", "test_runner", "test_runner.cpp", "-lstdc++"]
+                compile_result = subprocess.run(
+                    compile_cmd,
+                    cwd=temp_dir,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout
+                )
 
-        Args:
-            language: The programming language
-            temp_dir: The temporary directory containing code and test files
-            timeout: Maximum execution time in seconds
-
-        Returns:
-            List of test case results
-        """
-        # Create a unique container name
-        container_name = f"code_execution_{os.path.basename(temp_dir)}"
-
-        # Get the Docker image for the language
-        docker_image = self.DOCKER_IMAGES.get(language, "python:3.9-slim")
-
-        # For Python, use the standard approach
-        if language == "python":
-            try:
-                cmd = ["python", "run_tests.py"]
-
-                # Log the command for debugging
-                logger.info(f"Running Docker command for {language}: {cmd}")
-
-                # Run the container
-                run_cmd = [
-                    "docker", "run",
-                    "--name", container_name,
-                    "--memory", self.MEMORY_LIMIT,
-                    "-v", f"{os.path.abspath(temp_dir)}:/app",
-                    "-w", "/app",
-                    "--rm",
-                    docker_image,
-                    *cmd
-                ]
-
-                # Log the full Docker command
-                logger.info(f"Full Docker command: {' '.join(run_cmd)}")
-
-                # Run with a reasonable timeout
-                actual_timeout = max(timeout, 10)
-                subprocess.run(run_cmd, check=True, capture_output=True, timeout=actual_timeout)
-
-                # Read the results
-                results_path = os.path.join(temp_dir, "results.json")
-                if os.path.exists(results_path):
-                    with open(results_path, "r") as f:
-                        return json.load(f)
-                else:
-                    logger.error(f"Results file not found at {results_path}")
+                if compile_result.returncode != 0:
                     return [{
-                        "test_case_id": "error",
+                        "test_case_id": "compile_error",
                         "passed": False,
                         "actual_output": "",
                         "expected_output": "",
                         "execution_time": 0.0,
-                        "error_message": "Failed to get results from Docker container"
+                        "error_message": f"Compilation failed: {compile_result.stderr}"
                     }]
-            except subprocess.TimeoutExpired:
-                logger.error(f"Python Docker execution timed out after {actual_timeout} seconds")
-                return [{
-                    "test_case_id": "timeout",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": actual_timeout * 1000,
-                    "error_message": f"Execution timed out after {actual_timeout} seconds"
-                }]
-            except subprocess.SubprocessError as e:
-                logger.error(f"Python Docker execution error: {str(e)}")
+
+                cmd = ["./test_runner"]
+            else:
                 return [{
                     "test_case_id": "error",
                     "passed": False,
                     "actual_output": "",
                     "expected_output": "",
                     "execution_time": 0.0,
-                    "error_message": f"Docker execution error: {str(e)}"
+                    "error_message": f"Unsupported language: {language}"
                 }]
 
-        # For JavaScript, use a much simpler approach - just return dummy results without Docker
-        elif language == "javascript":
-            try:
-                # Read the test cases directly
-                test_file_path = os.path.join(temp_dir, "test_cases.json")
-                with open(test_file_path, "r") as f:
-                    test_cases = json.load(f)
+            # Run the command
+            result = subprocess.run(
+                cmd,
+                cwd=temp_dir,
+                capture_output=True,
+                text=True,
+                timeout=timeout
+            )
 
-                # Create dummy results that pass all tests
-                results = []
-                for i, test_case in enumerate(test_cases):
-                    test_id = f"test_{i}"
-                    expected_output = test_case.get("expected_output", "")
+            if result.returncode != 0:
+                return [{
+                    "test_case_id": "runtime_error",
+                    "passed": False,
+                    "actual_output": "",
+                    "expected_output": "",
+                    "execution_time": 0.0,
+                    "error_message": f"Runtime error: {result.stderr}"
+                }]
 
-                    results.append({
-                        "test_case_id": test_id,
-                        "passed": True,
-                        "actual_output": expected_output,
-                        "expected_output": expected_output,
-                        "execution_time": 0.0,
-                        "memory_usage": 0.0,
-                        "error_message": None
-                    })
+            # Read results from file
+            results_path = os.path.join(temp_dir, "results.json")
+            if os.path.exists(results_path):
+                with open(results_path, "r") as f:
+                    return json.load(f)
+            else:
+                # If no results file, try to parse stdout for C++
+                if language == "cpp" and result.stdout:
+                    try:
+                        return json.loads(result.stdout)
+                    except json.JSONDecodeError:
+                        pass
 
-                # Write results to file for consistency
-                results_path = os.path.join(temp_dir, "results.json")
-                with open(results_path, "w") as f:
-                    json.dump(results, f)
-
-                logger.info(f"Created dummy results for JavaScript code with {len(results)} test cases")
-                return results
-
-            except Exception as e:
-                logger.error(f"JavaScript execution error: {str(e)}")
                 return [{
                     "test_case_id": "error",
                     "passed": False,
                     "actual_output": "",
                     "expected_output": "",
                     "execution_time": 0.0,
-                    "error_message": f"JavaScript execution error: {str(e)}"
+                    "error_message": "No results file generated"
                 }]
 
-        # For Java, use a much simpler approach - just return dummy results without Docker
-        elif language == "java":
-            try:
-                # Read the test cases directly
-                test_file_path = os.path.join(temp_dir, "test_cases.json")
-                with open(test_file_path, "r") as f:
-                    test_cases = json.load(f)
-
-                # Create dummy results that pass all tests
-                results = []
-                for i, test_case in enumerate(test_cases):
-                    test_id = f"test_{i}"
-                    expected_output = test_case.get("expected_output", "")
-
-                    results.append({
-                        "test_case_id": test_id,
-                        "passed": True,
-                        "actual_output": expected_output,
-                        "expected_output": expected_output,
-                        "execution_time": 0.0,
-                        "memory_usage": 0.0,
-                        "error_message": None
-                    })
-
-                # Write results to file for consistency
-                results_path = os.path.join(temp_dir, "results.json")
-                with open(results_path, "w") as f:
-                    json.dump(results, f)
-
-                logger.info(f"Created dummy results for Java code with {len(results)} test cases")
-                return results
-
-            except Exception as e:
-                logger.error(f"Java execution error: {str(e)}")
-                return [{
-                    "test_case_id": "error",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": 0.0,
-                    "error_message": f"Java execution error: {str(e)}"
-                }]
-
-        # For other languages, use the standard approach
-        else:
-            try:
-                cmd = []
-                if language == "go":
-                    cmd = ["go", "run", "main.go"]
-                elif language == "ruby":
-                    cmd = ["ruby", "run_tests.rb"]
-                elif language == "cpp":
-                    cmd = ["bash", "build_and_run.sh"]
-                else:
-                    # Default to Python
-                    cmd = ["python", "run_tests.py"]
-
-                # Log the command for debugging
-                logger.info(f"Running Docker command for {language}: {cmd}")
-
-                # Run the container
-                run_cmd = [
-                    "docker", "run",
-                    "--name", container_name,
-                    "--memory", self.MEMORY_LIMIT,
-                    "-v", f"{os.path.abspath(temp_dir)}:/app",
-                    "-w", "/app",
-                    "--rm",
-                    docker_image,
-                    *cmd
-                ]
-
-                # Log the full Docker command
-                logger.info(f"Full Docker command: {' '.join(run_cmd)}")
-
-                # Run with a reasonable timeout
-                actual_timeout = max(timeout, 10)
-                subprocess.run(run_cmd, check=True, capture_output=True, timeout=actual_timeout)
-
-                # Read the results
-                results_path = os.path.join(temp_dir, "results.json")
-                if os.path.exists(results_path):
-                    with open(results_path, "r") as f:
-                        return json.load(f)
-                else:
-                    logger.error(f"Results file not found at {results_path}")
-                    return [{
-                        "test_case_id": "error",
-                        "passed": False,
-                        "actual_output": "",
-                        "expected_output": "",
-                        "execution_time": 0.0,
-                        "error_message": "Failed to get results from Docker container"
-                    }]
-            except subprocess.TimeoutExpired:
-                logger.error(f"Docker execution timed out after {actual_timeout} seconds")
-                return [{
-                    "test_case_id": "timeout",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": actual_timeout * 1000,
-                    "error_message": f"Execution timed out after {actual_timeout} seconds"
-                }]
-            except subprocess.SubprocessError as e:
-                logger.error(f"Docker execution error: {str(e)}")
-                return [{
-                    "test_case_id": "error",
-                    "passed": False,
-                    "actual_output": "",
-                    "expected_output": "",
-                    "execution_time": 0.0,
-                    "error_message": f"Docker execution error: {str(e)}"
-                }]
-
-    # Removed fallback execution method since we're enforcing Docker-only execution
+        except subprocess.TimeoutExpired:
+            return [{
+                "test_case_id": "timeout",
+                "passed": False,
+                "actual_output": "",
+                "expected_output": "",
+                "execution_time": timeout * 1000,
+                "error_message": f"Execution timed out after {timeout} seconds"
+            }]
+        except Exception as e:
+            return [{
+                "test_case_id": "error",
+                "passed": False,
+                "actual_output": "",
+                "expected_output": "",
+                "execution_time": 0.0,
+                "error_message": f"Execution error: {str(e)}"
+            }]

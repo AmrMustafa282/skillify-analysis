@@ -32,6 +32,7 @@ class DatabaseService:
         self.reports_collection = os.getenv("REPORTS_COLLECTION", "reports")
         self.analysis_jobs_collection = os.getenv("ANALYSIS_JOBS_COLLECTION", "analysis_jobs")
         self.analysis_job_logs_collection = os.getenv("ANALYSIS_JOB_LOGS_COLLECTION", "analysis_job_logs")
+        self.predefined_questions_collection = os.getenv("PREDEFINED_QUESTIONS_COLLECTION", "predefined_questions")
 
         # Connect to MongoDB
         try:
@@ -76,6 +77,10 @@ class DatabaseService:
             logger.info(f"Creating collection: {self.analysis_job_logs_collection}")
             self._db.create_collection(self.analysis_job_logs_collection)
 
+        if self.predefined_questions_collection not in existing_collections:
+            logger.info(f"Creating collection: {self.predefined_questions_collection}")
+            self._db.create_collection(self.predefined_questions_collection)
+
     def close(self):
         """Close the MongoDB connection."""
         if self._client:
@@ -95,7 +100,38 @@ class DatabaseService:
 
     # Assessment operations
 
-    def get_assessment_by_id(self, test_id: str) -> Optional[Dict]:
+    def get_assessment_by_id(self, test_id: str, include_sensitive_info: bool = True) -> Optional[Dict]:
+        """Get an assessment by ID.
+
+        Args:
+            test_id: Assessment ID
+
+        Returns:
+            Assessment document or None if not found
+        """
+        collection = self.get_collection(self.assessments_collection)
+
+        assessment = collection.find_one({"testId": test_id})
+        if not assessment:
+            return None
+
+        # Remove `correctAnswer` from questions
+        if not include_sensitive_info:
+           for question in assessment.get("questions", []):
+               question.pop("correctAnswer", None)
+
+        # # Remove sensitive fields from codingQuestions
+        if not include_sensitive_info:
+           for coding in assessment.get("codingQuestions", []):
+               coding.pop("solutionCode", None)
+
+        # Convert ObjectId to string for JSON serialization
+        if assessment and "_id" in assessment:
+            assessment["_id"] = str(assessment["_id"])
+
+        return assessment
+
+    def get_code_question_by_q_id(self, test_id: str, question_id: str, include_sensitive_info: bool = False) -> Optional[Dict]:
         """Get an assessment by ID.
 
         Args:
@@ -107,11 +143,18 @@ class DatabaseService:
         collection = self.get_collection(self.assessments_collection)
         assessment = collection.find_one({"testId": test_id})
 
-        # Convert ObjectId to string for JSON serialization
-        if assessment and "_id" in assessment:
-            assessment["_id"] = str(assessment["_id"])
+        if not assessment:
+            return None
 
-        return assessment
+        for coding in assessment.get("codingQuestions", []):
+            if coding.get("order") == int(question_id):
+                # Make a shallow copy so the original DB data isn't affected
+                sanitized_question = coding.copy()
+                if not include_sensitive_info:
+                   sanitized_question.pop("solutionCode", None)
+                return sanitized_question
+
+        return None
 
     def get_all_assessments(self) -> List[Dict]:
         """Get all assessments.
@@ -188,7 +231,54 @@ class DatabaseService:
             Solution document or None if not found
         """
         collection = self.get_collection(self.solutions_collection)
-        return collection.find_one({"solution_id": solution_id})
+        solution = collection.find_one({"solution_id": solution_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if solution and "_id" in solution:
+            solution["_id"] = str(solution["_id"])
+
+        return solution
+
+    def get_solution_by_test_and_candidate(self, test_id: str, candidate_id: str) -> Optional[Dict]:
+        """Get a solution by test ID and candidate ID.
+
+        Args:
+            test_id: Test ID
+            candidate_id: Candidate ID
+
+        Returns:
+            Solution document or None if not found
+        """
+        collection = self.get_collection(self.solutions_collection)
+        solution = collection.find_one({"test_id": test_id, "candidate_id": candidate_id})
+
+        # Convert ObjectId to string for JSON serialization
+        if solution and "_id" in solution:
+            solution["_id"] = str(solution["_id"])
+
+        return solution
+
+    def update_solution(self, solution_id: str, solution_data: Dict) -> bool:
+        """Update a solution.
+
+        Args:
+            solution_id: Solution ID
+            solution_data: Updated solution data
+
+        Returns:
+            True if successful, False otherwise
+        """
+        collection = self.get_collection(self.solutions_collection)
+
+        # Remove _id from solution_data if present to avoid update conflicts
+        if "_id" in solution_data:
+            del solution_data["_id"]
+
+        result = collection.update_one(
+            {"solution_id": solution_id},
+            {"$set": solution_data}
+        )
+        return result.modified_count > 0
 
     def get_solutions_by_test_id(self, test_id: str) -> List[Dict]:
         """Get all solutions for a test.
@@ -412,7 +502,7 @@ class DatabaseService:
             Report document or None if not found
         """
         collection = self.get_collection(self.reports_collection)
-        report = collection.find_one({"test_id": test_id})
+        report = collection.find_one({"test_id": test_id},sort=[("generated_at", -1)])
         if report and "_id" in report:
             report["_id"] = str(report["_id"])
         return report
@@ -617,3 +707,201 @@ class DatabaseService:
                     logger.error(f"Failed to load sample solution {solution_file}: {e}")
 
         logger.info("Sample data loading complete")
+
+    # Predefined Questions Methods
+    def get_predefined_questions(self, filter_criteria: Dict = None, limit: int = None, offset: int = 0) -> List[Dict]:
+        """Get predefined questions with optional filtering and pagination."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            # Build query
+            query = filter_criteria or {}
+
+            # Create cursor with optional limit and offset
+            cursor = collection.find(query, {"_id": 0})  # Exclude MongoDB _id field
+
+            if offset > 0:
+                cursor = cursor.skip(offset)
+
+            if limit:
+                cursor = cursor.limit(limit)
+
+            # Sort by topic and difficulty for consistent ordering
+            cursor = cursor.sort([("metadata.topic", 1), ("metadata.difficulty", 1)])
+
+            questions = list(cursor)
+            logger.info(f"Retrieved {len(questions)} predefined questions")
+            return questions
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined questions: {e}")
+            return []
+
+    def count_predefined_questions(self, filter_criteria: Dict = None) -> int:
+        """Count predefined questions matching the filter criteria."""
+        try:
+            collection = self.get_collection("predefined_questions")
+            query = filter_criteria or {}
+            count = collection.count_documents(query)
+            return count
+
+        except Exception as e:
+            logger.error(f"Error counting predefined questions: {e}")
+            return 0
+
+    def get_predefined_question_by_id(self, question_id: str) -> Optional[Dict]:
+        """Get a specific predefined question by its ID."""
+        try:
+            collection = self.get_collection("predefined_questions")
+            question = collection.find_one({"id": question_id}, {"_id": 0})
+
+            if question:
+                logger.info(f"Retrieved predefined question: {question_id}")
+            else:
+                logger.warning(f"Predefined question not found: {question_id}")
+
+            return question
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined question {question_id}: {e}")
+            return None
+
+    def get_predefined_question_topics(self) -> List[str]:
+        """Get all unique topics from predefined questions."""
+        try:
+            collection = self.get_collection("predefined_questions")
+            topics = collection.distinct("metadata.topic")
+            topics.sort()  # Sort alphabetically
+            logger.info(f"Retrieved {len(topics)} unique topics")
+            return topics
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined question topics: {e}")
+            return []
+
+    def get_predefined_question_languages(self) -> List[str]:
+        """Get all unique programming languages from predefined questions."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            # Use aggregation to get unique languages from implementations array
+            pipeline = [
+                {"$unwind": "$implementations"},
+                {"$group": {"_id": "$implementations.language"}},
+                {"$sort": {"_id": 1}}
+            ]
+
+            result = collection.aggregate(pipeline)
+            languages = [doc["_id"] for doc in result]
+
+            logger.info(f"Retrieved {len(languages)} unique languages")
+            return languages
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined question languages: {e}")
+            return []
+
+    def get_predefined_question_companies(self) -> List[str]:
+        """Get all unique companies from predefined questions."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            # Use aggregation to get unique companies from metadata.companies array
+            pipeline = [
+                {"$unwind": "$metadata.companies"},
+                {"$group": {"_id": "$metadata.companies"}},
+                {"$sort": {"_id": 1}}
+            ]
+
+            result = collection.aggregate(pipeline)
+            companies = [doc["_id"] for doc in result]
+
+            logger.info(f"Retrieved {len(companies)} unique companies")
+            return companies
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined question companies: {e}")
+            return []
+
+    def get_predefined_question_difficulties(self) -> List[str]:
+        """Get all unique difficulty levels from predefined questions."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            # Get unique difficulties from metadata.difficulty field
+            difficulties = collection.distinct("metadata.difficulty")
+
+            # Sort in logical order: EASY, MEDIUM, HARD
+            difficulty_order = ["EASY", "MEDIUM", "HARD"]
+            sorted_difficulties = [d for d in difficulty_order if d in difficulties]
+
+            # Add any other difficulties that might exist
+            for d in difficulties:
+                if d not in sorted_difficulties:
+                    sorted_difficulties.append(d)
+
+            logger.info(f"Retrieved {len(sorted_difficulties)} unique difficulties")
+            return sorted_difficulties
+
+        except Exception as e:
+            logger.error(f"Error retrieving predefined question difficulties: {e}")
+            return []
+
+    def store_predefined_questions(self, questions: List[Dict]) -> bool:
+        """Store predefined questions in MongoDB."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            # Clear existing questions first
+            collection.delete_many({})
+            logger.info("Cleared existing predefined questions")
+
+            # Insert new questions
+            if questions:
+                collection.insert_many(questions)
+                logger.info(f"Stored {len(questions)} predefined questions")
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error storing predefined questions: {e}")
+            return False
+
+    def update_predefined_question(self, question_id: str, question_data: Dict) -> bool:
+        """Update a specific predefined question."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            result = collection.update_one(
+                {"id": question_id},
+                {"$set": question_data}
+            )
+
+            if result.modified_count > 0:
+                logger.info(f"Updated predefined question: {question_id}")
+                return True
+            else:
+                logger.warning(f"No predefined question found to update: {question_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error updating predefined question {question_id}: {e}")
+            return False
+
+    def delete_predefined_question(self, question_id: str) -> bool:
+        """Delete a specific predefined question."""
+        try:
+            collection = self.get_collection("predefined_questions")
+
+            result = collection.delete_one({"id": question_id})
+
+            if result.deleted_count > 0:
+                logger.info(f"Deleted predefined question: {question_id}")
+                return True
+            else:
+                logger.warning(f"No predefined question found to delete: {question_id}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error deleting predefined question {question_id}: {e}")
+            return False

@@ -269,6 +269,398 @@ Reports include:
 - Comparative tables for easy comparison
 - Visualizations of performance metrics
 
+## Schema
+```mermaid
+erDiagram
+    TESTS {
+        ObjectId _id PK
+        string testId UK
+        string createdAt
+        string updatedAt
+        string description
+        string name
+        string title
+        string jobId
+        integer duration
+        integer timeLimit
+        string startDate
+        string endDate
+        string startTime
+        string endTime
+        array questions
+        array codingQuestions
+    }
+
+    QUESTIONS {
+        string id PK
+        string type
+        string text
+        integer order
+        string difficulty
+        boolean required
+        boolean deleted
+        object correctAnswer
+        object options
+    }
+
+    QUESTION_CHOICES {
+        string id PK
+        string text
+        boolean isCorrect
+        integer order
+    }
+
+    CODING_QUESTIONS {
+        string title
+        string text
+        string language
+        integer order
+        string starterCode
+        string solutionCode
+        object metadata
+        object evaluationCriteria
+        object gradingRules
+        array testCases
+    }
+
+    CODING_METADATA {
+        string difficulty
+        integer estimatedDuration
+        array tags
+    }
+
+    EVALUATION_CRITERIA {
+        string timeComplexity
+        string spaceComplexity
+        array constraints
+    }
+
+    GRADING_RULES {
+        double testCaseWeight
+        double codeQualityWeight
+        double efficiencyWeight
+        boolean partialCredit
+    }
+
+    TEST_CASES {
+        string input
+        string expected_output
+        double weight
+    }
+
+    SOLUTIONS {
+        ObjectId _id PK
+        string solution_id UK
+        string candidate_id
+        string test_id FK
+        string started_at
+        string completed_at
+        string last_activity
+        integer time_taken
+        integer time_remaining
+        integer current_question
+        integer answered_questions
+        integer total_questions
+        array answers
+        array coding_answers
+        array draft_answers
+    }
+
+    ANSWERS {
+        string question_id FK
+        string answer_type
+        string value
+        string submitted_at
+    }
+
+    CODING_ANSWERS {
+        string question_id FK
+        string code
+        string language
+        double execution_time
+        integer memory_usage
+        string submitted_at
+    }
+
+    DRAFT_ANSWERS {
+        string question_id FK
+        string answer_type
+        string value
+    }
+
+    ANALYSES {
+        ObjectId _id PK
+        string analysis_id UK
+        string candidate_id
+        string test_id FK
+        string solution_id FK
+        string analyzed_at
+        double overall_score
+        array coding_analyses
+        array mcq_analyses
+        array open_ended_analyses
+    }
+
+    CODING_ANALYSES {
+        string question_id FK
+        double overall_score
+        double correctness_score
+        object ai_detection
+        object code_quality
+        object performance_analysis
+        object style_analysis
+        array test_case_results
+    }
+
+    AI_DETECTION {
+        double ai_generated_probability
+        string detection_method
+        array flagged_patterns
+    }
+
+    CODE_QUALITY {
+        integer line_count
+        integer function_count
+        double comment_ratio
+        double cyclomatic_complexity
+        object maintainability_index
+        null halstead_volume
+    }
+
+    MAINTAINABILITY_INDEX {
+        double mi
+        string rank
+    }
+
+    PERFORMANCE_ANALYSIS {
+        string time_complexity
+        double time_complexity_score
+        string space_complexity
+        double space_complexity_score
+        double efficiency_score
+        array optimization_suggestions
+    }
+
+    STYLE_ANALYSIS {
+        double style_score
+        double naming_convention_score
+        array style_issues
+    }
+
+    STYLE_ISSUES {
+        string issue_type
+        integer line_number
+        string message
+        string severity
+    }
+
+    TEST_CASE_RESULTS {
+        string test_case_id FK
+        boolean passed
+        string expected_output
+        string actual_output
+        double execution_time
+        double memory_usage
+        null error_message
+    }
+
+    MCQ_ANALYSES {
+        string question_id FK
+        boolean is_correct
+        double correctness_score
+    }
+
+    OPEN_ENDED_ANALYSES {
+        string question_id FK
+        double overall_score
+        double clarity_score
+        double relevance_score
+    }
+
+    REPORTS {
+        ObjectId _id PK
+        string report_id UK
+        string test_id FK
+        string generated_at
+        integer candidate_count
+        double average_score
+        object score_distribution
+        object coding_performance
+        object mcq_performance
+        object open_ended_performance
+        array top_candidates
+    }
+
+    SCORE_DISTRIBUTION {
+        integer excellent
+        integer good
+        integer average
+        integer poor
+    }
+
+    CODING_PERFORMANCE {
+        double average_score
+        double average_test_pass_rate
+        object metrics
+    }
+
+    CODING_METRICS {
+        double correctness
+        double code_quality
+        double performance
+        double style
+        double originality
+    }
+
+    MCQ_PERFORMANCE {
+        double average_score
+    }
+
+    OPEN_ENDED_PERFORMANCE {
+        double average_score
+        object metrics
+    }
+
+    OPEN_ENDED_METRICS {
+        double clarity
+        double relevance
+    }
+
+    TOP_CANDIDATES {
+        string candidate_id FK
+        string solution_id FK
+        string analysis_id FK
+        integer rank
+        string ranked_at
+        double overall_score
+        double coding_score
+        double mcq_score
+        double open_ended_score
+        object coding_details
+        object mcq_details
+        object open_ended_details
+    }
+
+    CANDIDATE_CODING_DETAILS {
+        double overall
+        double correctness
+        double code_quality
+        double performance
+        double style
+        double originality
+        integer passed_tests
+        integer total_tests
+        double test_pass_rate
+    }
+
+    CANDIDATE_MCQ_DETAILS {
+        double overall
+        double correctness
+        integer correct_count
+        integer total_count
+        double correct_rate
+    }
+
+    CANDIDATE_OPEN_ENDED_DETAILS {
+        double overall
+        double clarity
+        double relevance
+    }
+
+    JOBS {
+        ObjectId _id PK
+        string job_id UK
+        string job_type
+        string status
+        integer progress
+        string created_at
+        string updated_at
+        string completed_at
+        object job_data
+        object result
+        null error
+    }
+
+    JOB_DATA {
+        string test_id FK
+        string solution_id FK
+    }
+
+    JOB_RESULT {
+        string analysis_id FK
+        array analysis_ids
+    }
+
+    JOB_LOGS {
+        ObjectId _id PK
+        string job_id FK
+        string message
+        string timestamp
+    }
+
+    %% Core Test Structure Relationships
+    TESTS ||--o{ QUESTIONS : contains
+    TESTS ||--o{ CODING_QUESTIONS : includes
+    QUESTIONS ||--o{ QUESTION_CHOICES : has
+    CODING_QUESTIONS ||--|| CODING_METADATA : has
+    CODING_QUESTIONS ||--|| EVALUATION_CRITERIA : defines
+    CODING_QUESTIONS ||--|| GRADING_RULES : uses
+    CODING_QUESTIONS ||--o{ TEST_CASES : includes
+
+    %% Solution and Answer Relationships
+    TESTS ||--o{ SOLUTIONS : generates
+    SOLUTIONS ||--o{ ANSWERS : contains
+    SOLUTIONS ||--o{ CODING_ANSWERS : includes
+    SOLUTIONS ||--o{ DRAFT_ANSWERS : stores
+
+    %% Analysis Relationships
+    SOLUTIONS ||--|| ANALYSES : analyzed_by
+    TESTS ||--o{ ANALYSES : evaluated_for
+    ANALYSES ||--o{ CODING_ANALYSES : contains
+    ANALYSES ||--o{ MCQ_ANALYSES : includes
+    ANALYSES ||--o{ OPEN_ENDED_ANALYSES : evaluates
+
+    %% Detailed Analysis Structure
+    CODING_ANALYSES ||--|| AI_DETECTION : uses
+    CODING_ANALYSES ||--|| CODE_QUALITY : measures
+    CODING_ANALYSES ||--|| PERFORMANCE_ANALYSIS : analyzes
+    CODING_ANALYSES ||--|| STYLE_ANALYSIS : reviews
+    CODING_ANALYSES ||--o{ TEST_CASE_RESULTS : produces
+    CODE_QUALITY ||--|| MAINTAINABILITY_INDEX : calculates
+    STYLE_ANALYSIS ||--o{ STYLE_ISSUES : identifies
+
+    %% Question-Answer Relationships
+    QUESTIONS ||--o{ ANSWERS : answered_by
+    CODING_QUESTIONS ||--o{ CODING_ANSWERS : solved_by
+    QUESTIONS ||--o{ MCQ_ANALYSES : evaluated_in
+    QUESTIONS ||--o{ OPEN_ENDED_ANALYSES : assessed_in
+    CODING_QUESTIONS ||--o{ CODING_ANALYSES : analyzed_in
+
+    %% Report Relationships
+    TESTS ||--o{ REPORTS : summarized_in
+    REPORTS ||--|| SCORE_DISTRIBUTION : shows
+    REPORTS ||--|| CODING_PERFORMANCE : analyzes
+    REPORTS ||--|| MCQ_PERFORMANCE : evaluates
+    REPORTS ||--|| OPEN_ENDED_PERFORMANCE : assesses
+    REPORTS ||--o{ TOP_CANDIDATES : ranks
+
+    %% Report Detail Structures
+    CODING_PERFORMANCE ||--|| CODING_METRICS : contains
+    OPEN_ENDED_PERFORMANCE ||--|| OPEN_ENDED_METRICS : includes
+    TOP_CANDIDATES ||--|| CANDIDATE_CODING_DETAILS : details
+    TOP_CANDIDATES ||--|| CANDIDATE_MCQ_DETAILS : shows
+    TOP_CANDIDATES ||--|| CANDIDATE_OPEN_ENDED_DETAILS : includes
+
+    %% Job Processing Relationships
+    JOBS ||--|| JOB_DATA : contains
+    JOBS ||--|| JOB_RESULT : produces
+    JOBS ||--o{ JOB_LOGS : generates
+
+    %% Cross-References
+    SOLUTIONS ||--o{ TOP_CANDIDATES : featured_in
+    ANALYSES ||--o{ TOP_CANDIDATES : ranked_by
+```
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.

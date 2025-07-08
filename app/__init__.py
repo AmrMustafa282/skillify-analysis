@@ -1,3 +1,0 @@
-"""
-Assessment Analysis Server package.
-"""
